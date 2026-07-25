@@ -1,0 +1,4519 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Poste de contrôle</title>
+<meta name="theme-color" content="#15130F">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>html,body{margin:0;background:#15130F}</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef
+} = React;
+const {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+  ComposedChart,
+  Legend
+} = Recharts;
+/* ============================ TOKENS ============================ */
+const T = {
+  ground: "#15130F",
+  panel: "#1F1B15",
+  panel2: "#282219",
+  line: "#3A3227",
+  bone: "#F4EFE4",
+  dim: "#9C9285",
+  faint: "#6B6459",
+  amber: "#F0A830",
+  peri: "#8B95FF",
+  brick: "#C4553D",
+  moss: "#8CA86B",
+  mono: "'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace",
+  sans: "'Archivo', system-ui, -apple-system, sans-serif"
+};
+const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+* { -webkit-tap-highlight-color: transparent; }
+input, select, textarea { font-family: ${T.mono}; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: ${T.line}; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }`;
+
+/* ============================ UTILS ============================ */
+const KCAL_PER_KG = 7700;
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const parseYmd = s => {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
+const addDays = (s, n) => {
+  const d = parseYmd(s);
+  d.setDate(d.getDate() + n);
+  return ymd(d);
+};
+const daysBetween = (a, b) => Math.round((parseYmd(b) - parseYmd(a)) / 86400000);
+const todayKey = () => ymd(new Date());
+const shortFr = s => {
+  const d = parseYmd(s);
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+const DOW = ["dim", "lun", "mar", "mer", "jeu", "ven", "sam"];
+const dowFr = s => DOW[parseYmd(s).getDay()];
+const uid = () => Math.random().toString(36).slice(2, 9);
+const nf = (v, d = 0) => v === null || v === undefined || Number.isNaN(v) ? "—" : Number(v).toFixed(d);
+const sum = a => a.reduce((x, y) => x + y, 0);
+const mean = a => a.length ? sum(a) / a.length : null;
+const r1 = v => Math.round(v * 10) / 10;
+const e1rm = (w, r) => r >= 1 && w > 0 ? w * (1 + r / 30) : 0;
+const KEY_LIFTS = ["Développé couché barre", "Tractions lestées", "Développé militaire haltères assis", "Rowing T-bar / machine lourd"];
+const LIFT_SHORT = {
+  "Développé couché barre": "Bench",
+  "Tractions lestées": "Tractions +",
+  "Développé militaire haltères assis": "Militaire",
+  "Rowing T-bar / machine lourd": "Rowing"
+};
+
+/* ============================ PROGRAMME D'ENTRAÎNEMENT ============================ */
+/* Aligné sur Programmes_Entrainement.md — abdos en avant-dernier, delts latéraux 3×/sem */
+const PROGRAM = {
+  A1: {
+    label: "J1 · Push A",
+    tag: "lourd",
+    place: "Salle",
+    planDay: 1,
+    ex: [{
+      n: "Développé couché barre",
+      s: 4,
+      r: "5-6",
+      rpe: "7-8",
+      rest: 150,
+      g: "Pec",
+      tempo: "3/0/1/0",
+      note: "Pec droit : stoppe 2-3 cm avant l'étirement max. Jamais l'échec.",
+      sub: "Sans rack : Smith guidé, machine convergente, ou haltères (tu règles ton amplitude)"
+    }, {
+      n: "Développé incliné Smith / machine convergente",
+      s: 3,
+      r: "8-10",
+      rpe: "8",
+      rest: 120,
+      g: "Pec",
+      note: "Machine = zéro équilibre à gérer → tu charges plus, amplitude contrôlée"
+    }, {
+      n: "Développé militaire haltères assis",
+      s: 3,
+      r: "6-8",
+      rpe: "8",
+      rest: 120,
+      g: "Épaules"
+    }, {
+      n: "Élévations latérales",
+      s: 4,
+      r: "12-15",
+      rpe: "9",
+      rest: 60,
+      g: "Épaules",
+      note: "Myo-reps sur la dernière série"
+    }, {
+      n: "Extension triceps poulie corde",
+      s: 3,
+      r: "10-12",
+      rpe: "9",
+      rest: 75,
+      g: "Triceps"
+    }, {
+      n: "Crunch poulie lesté",
+      s: 3,
+      r: "10-15",
+      rpe: "8-9",
+      rest: 60,
+      g: "Abdos",
+      note: "AVANT-DERNIER. Charge progressive obligatoire : 15 reps × 3 séries → tu montes la charge"
+    }, {
+      n: "Barre au front / extension unilatérale",
+      s: 2,
+      r: "10-12",
+      rpe: "9",
+      rest: 60,
+      g: "Triceps"
+    }]
+  },
+  A2: {
+    label: "J2 · Pull A",
+    tag: "largeur / lourd",
+    place: "Salle",
+    planDay: 2,
+    ex: [{
+      n: "Tractions lestées",
+      s: 4,
+      r: "5-7",
+      rpe: "8",
+      rest: 150,
+      g: "Dos",
+      note: "Meilleur constructeur de largeur"
+    }, {
+      n: "Tirage horizontal câble prise neutre",
+      s: 3,
+      r: "8-10",
+      rpe: "8",
+      rest: 120,
+      g: "Dos"
+    }, {
+      n: "Tirage vertical prise large",
+      s: 3,
+      r: "10-12",
+      rpe: "9",
+      rest: 90,
+      g: "Dos"
+    }, {
+      n: "Rowing haltère unilatéral",
+      s: 3,
+      r: "10-12",
+      rpe: "8",
+      rest: 90,
+      g: "Dos",
+      note: "Corrige l'asymétrie"
+    }, {
+      n: "Oiseau / pec deck inversé",
+      s: 3,
+      r: "15-20",
+      rpe: "9",
+      rest: 60,
+      g: "Delt. post."
+    }, {
+      n: "Curl barre EZ",
+      s: 3,
+      r: "8-10",
+      rpe: "8-9",
+      rest: 75,
+      g: "Biceps"
+    }, {
+      n: "Relevés de jambes chaise romaine",
+      s: 3,
+      r: "8-12",
+      rpe: "8-9",
+      rest: 60,
+      g: "Abdos",
+      note: "AVANT-DERNIER. Pause 2 s immobile avant le 1er rep, rétroversion du bassin AVANT la montée, descente 3 s"
+    }, {
+      n: "Curl incliné haltères",
+      s: 2,
+      r: "10-12",
+      rpe: "9",
+      rest: 60,
+      g: "Biceps",
+      note: "Chef long en étirement"
+    }]
+  },
+  A3: {
+    label: "J3 · Push B",
+    tag: "volume",
+    place: "Salle",
+    planDay: 4,
+    ex: [{
+      n: "Développé incliné haltères",
+      s: 4,
+      r: "8-12",
+      rpe: "8",
+      rest: 120,
+      g: "Pec",
+      note: "Règle des 6 séances : les sensations viendront, ne juge pas avant"
+    }, {
+      n: "Développé épaules machine",
+      s: 3,
+      r: "10-12",
+      rpe: "8",
+      rest: 90,
+      g: "Épaules"
+    }, {
+      n: "Élévations latérales poulie unilatérale",
+      s: 5,
+      r: "12-20",
+      rpe: "9",
+      rest: 50,
+      g: "Épaules",
+      note: "Double dose latéraux = priorité largeur"
+    }, {
+      n: "Écarté poulie / pec deck",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 60,
+      g: "Pec",
+      note: "Étirement OK ici : charge modérée"
+    }, {
+      n: "Dips machine / triceps",
+      s: 3,
+      r: "10-12",
+      rpe: "9",
+      rest: 75,
+      g: "Triceps"
+    }, {
+      n: "Extension overhead corde",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 60,
+      g: "Triceps",
+      note: "Drop set possible sur la dernière"
+    }]
+  },
+  A4: {
+    label: "J4 · Pull B + Jambes",
+    tag: "épaisseur",
+    place: "Salle",
+    planDay: 5,
+    ex: [{
+      n: "Rowing T-bar / machine lourd",
+      s: 4,
+      r: "8-10",
+      rpe: "8",
+      rest: 120,
+      g: "Dos"
+    }, {
+      n: "Élévations latérales",
+      s: 4,
+      r: "12-20",
+      rpe: "9",
+      rest: 60,
+      g: "Épaules",
+      note: "Delts 3×/sem. Remplace un tirage vertical : le dos est déjà largement servi"
+    }, {
+      n: "Face pull",
+      s: 3,
+      r: "15-20",
+      rpe: "9",
+      rest: 45,
+      g: "Delt. post."
+    }, {
+      n: "Curl marteau",
+      s: 3,
+      r: "10-12",
+      rpe: "9",
+      rest: 60,
+      g: "Biceps",
+      note: "Brachial = épaisseur du bras"
+    }, {
+      n: "Curl poulie (finisher)",
+      s: 2,
+      r: "12-15",
+      rpe: "9",
+      rest: 45,
+      g: "Biceps"
+    }, {
+      n: "Presse à cuisses",
+      s: 3,
+      r: "10-12",
+      rpe: "8",
+      rest: 90,
+      g: "Jambes",
+      sub: "Sans presse : fentes, goblet squat ou hip thrust"
+    }, {
+      n: "Leg curl allongé",
+      s: 3,
+      r: "10-12",
+      rpe: "8",
+      rest: 75,
+      g: "Jambes"
+    }, {
+      n: "Roulette abdominale / planche lestée",
+      s: 3,
+      r: "8-12",
+      rpe: "8-9",
+      rest: 60,
+      g: "Abdos",
+      note: "AVANT-DERNIER. Anti-extension, très forte tension"
+    }, {
+      n: "Mollets debout",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 45,
+      g: "Jambes"
+    }]
+  },
+  /* VERSION E — élastiques (config voyage par défaut) */
+  E1: {
+    label: "Push · Élastiques",
+    tag: "Version E",
+    place: "Élastiques",
+    ex: [{
+      n: "Développé couché élastique (ancrage bas)",
+      s: 4,
+      r: "12-20",
+      rpe: "9",
+      rest: 90,
+      g: "Pec",
+      note: "Tempo contrôlé, pause en fin de poussée"
+    }, {
+      n: "Développé épaules (debout sur la bande)",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 75,
+      g: "Épaules"
+    }, {
+      n: "Élévations latérales élastiques",
+      s: 4,
+      r: "15-20",
+      rpe: "9",
+      rest: 60,
+      g: "Épaules",
+      note: "Pic de résistance en haut = pic de contraction"
+    }, {
+      n: "Crunch bande à genoux (ancrage haut)",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 45,
+      g: "Abdos"
+    }, {
+      n: "Extension triceps corde-bande",
+      s: 3,
+      r: "15-20",
+      rpe: "9",
+      rest: 60,
+      g: "Triceps"
+    }]
+  },
+  E2: {
+    label: "Pull · Élastiques",
+    tag: "Version E",
+    place: "Élastiques",
+    ex: [{
+      n: "Tirage horizontal (ancrage porte milieu)",
+      s: 4,
+      r: "12-15",
+      rpe: "9",
+      rest: 90,
+      g: "Dos"
+    }, {
+      n: "Tirage vertical (ancrage haut)",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 75,
+      g: "Dos"
+    }, {
+      n: "Tractions (barre de porte)",
+      s: 3,
+      r: "max",
+      rpe: "9",
+      rest: 120,
+      g: "Dos",
+      note: "L'achat qui débloque ton point faible en voyage"
+    }, {
+      n: "Face pull bande",
+      s: 3,
+      r: "20",
+      rpe: "9",
+      rest: 45,
+      g: "Delt. post."
+    }, {
+      n: "Relevés de jambes au sol / hollow",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 45,
+      g: "Abdos"
+    }, {
+      n: "Curl bande (debout dessus)",
+      s: 3,
+      r: "15-20",
+      rpe: "9",
+      rest: 60,
+      g: "Biceps"
+    }]
+  },
+  E3: {
+    label: "Jambes entretien · Élastiques",
+    tag: "Version E",
+    place: "Élastiques",
+    ex: [{
+      n: "Squats + bande",
+      s: 3,
+      r: "15-20",
+      rpe: "9",
+      rest: 75,
+      g: "Jambes"
+    }, {
+      n: "Fentes",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 60,
+      g: "Jambes"
+    }, {
+      n: "RDL bande",
+      s: 3,
+      r: "12-15",
+      rpe: "8",
+      rest: 60,
+      g: "Jambes"
+    }, {
+      n: "Mollets unilatéraux",
+      s: 3,
+      r: "15-20",
+      rpe: "9",
+      rest: 45,
+      g: "Jambes"
+    }]
+  },
+  /* VERSION C — petite salle d'hôtel, haltères ≤20-30 kg */
+  C1: {
+    label: "Push · Hôtel (haltères)",
+    tag: "Version C",
+    place: "Hôtel",
+    ex: [{
+      n: "Développé incliné haltères",
+      s: 4,
+      r: "12-20",
+      rpe: "9",
+      rest: 90,
+      g: "Pec",
+      tempo: "4/0/1/0",
+      note: "Charges plafonnées → on compense par reps hautes + proximité de l'échec + tempo lent"
+    }, {
+      n: "Développé haltères plat",
+      s: 3,
+      r: "12-20",
+      rpe: "9",
+      rest: 90,
+      g: "Pec",
+      tempo: "4/0/1/0"
+    }, {
+      n: "Développé épaules haltères",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 75,
+      g: "Épaules"
+    }, {
+      n: "Élévations latérales haltères",
+      s: 4,
+      r: "15-20",
+      rpe: "9",
+      rest: 60,
+      g: "Épaules",
+      note: "Drop set sur la dernière"
+    }, {
+      n: "Crunch / relevés de jambes",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 45,
+      g: "Abdos"
+    }, {
+      n: "Extension triceps overhead haltère",
+      s: 3,
+      r: "15-20",
+      rpe: "9",
+      rest: 60,
+      g: "Triceps"
+    }]
+  },
+  C2: {
+    label: "Pull · Hôtel (haltères)",
+    tag: "Version C",
+    place: "Hôtel",
+    ex: [{
+      n: "Rowing haltère unilatéral lourd",
+      s: 4,
+      r: "10-15",
+      rpe: "9",
+      rest: 90,
+      g: "Dos",
+      note: "Concentre toute la charge dispo sur un bras"
+    }, {
+      n: "Tractions (si barre dispo)",
+      s: 3,
+      r: "max",
+      rpe: "9",
+      rest: 120,
+      g: "Dos"
+    }, {
+      n: "Rowing 2 haltères buste penché",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 75,
+      g: "Dos"
+    }, {
+      n: "Oiseau haltères",
+      s: 3,
+      r: "15-20",
+      rpe: "9",
+      rest: 45,
+      g: "Delt. post."
+    }, {
+      n: "Curl haltères",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 60,
+      g: "Biceps"
+    }, {
+      n: "Curl marteau",
+      s: 2,
+      r: "12-15",
+      rpe: "9",
+      rest: 45,
+      g: "Biceps"
+    }]
+  },
+  C3: {
+    label: "Jambes · Hôtel",
+    tag: "Version C",
+    place: "Hôtel",
+    ex: [{
+      n: "Fentes bulgares",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 75,
+      g: "Jambes"
+    }, {
+      n: "Goblet squat tempo lent",
+      s: 3,
+      r: "15-20",
+      rpe: "9",
+      rest: 75,
+      g: "Jambes",
+      tempo: "4/1/1/0"
+    }, {
+      n: "RDL haltères",
+      s: 3,
+      r: "12-15",
+      rpe: "8",
+      rest: 60,
+      g: "Jambes"
+    }, {
+      n: "Mollets unilatéraux",
+      s: 3,
+      r: "15-20",
+      rpe: "9",
+      rest: 45,
+      g: "Jambes"
+    }]
+  },
+  /* VERSION D — aucun matériel */
+  D1: {
+    label: "Push · Poids du corps",
+    tag: "Version D",
+    place: "Sans matériel",
+    ex: [{
+      n: "Pompes archer",
+      s: 4,
+      r: "6-12",
+      rpe: "9",
+      rest: 90,
+      g: "Pec",
+      note: "On augmente la difficulté du levier, pas le nombre de reps"
+    }, {
+      n: "Pompes déclinées",
+      s: 3,
+      r: "10-20",
+      rpe: "9",
+      rest: 75,
+      g: "Pec"
+    }, {
+      n: "Pike push-ups",
+      s: 3,
+      r: "8-15",
+      rpe: "9",
+      rest: 75,
+      g: "Épaules",
+      note: "Progression vers le handstand push-up"
+    }, {
+      n: "Pompes diamant",
+      s: 3,
+      r: "10-20",
+      rpe: "9",
+      rest: 60,
+      g: "Triceps"
+    }, {
+      n: "Hollow / relevés de jambes",
+      s: 3,
+      r: "12-15",
+      rpe: "9",
+      rest: 45,
+      g: "Abdos"
+    }, {
+      n: "Pseudo-planche lean",
+      s: 2,
+      r: "8-15",
+      rpe: "9",
+      rest: 60,
+      g: "Pec"
+    }]
+  },
+  D2: {
+    label: "Pull + Jambes · Poids du corps",
+    tag: "Version D",
+    place: "Sans matériel",
+    ex: [{
+      n: "Rows sous table / porte",
+      s: 4,
+      r: "8-15",
+      rpe: "9",
+      rest: 90,
+      g: "Dos",
+      note: "⚠ Point faible de cette version : ne reste pas ici plus de 1-2 semaines"
+    }, {
+      n: "Tractions (barre de parc)",
+      s: 3,
+      r: "max",
+      rpe: "9",
+      rest: 120,
+      g: "Dos"
+    }, {
+      n: "Progression pistol squat",
+      s: 3,
+      r: "5-10",
+      rpe: "9",
+      rest: 90,
+      g: "Jambes"
+    }, {
+      n: "Fentes sautées / fentes",
+      s: 3,
+      r: "15-20",
+      rpe: "9",
+      rest: 60,
+      g: "Jambes"
+    }, {
+      n: "Planche dynamique",
+      s: 3,
+      r: "30-45 s",
+      rpe: "9",
+      rest: 45,
+      g: "Abdos"
+    }, {
+      n: "Mollets unilatéraux",
+      s: 3,
+      r: "20-25",
+      rpe: "9",
+      rest: 45,
+      g: "Jambes"
+    }]
+  },
+  /* SANTÉ / NEAT */
+  Z1: {
+    label: "Cardio Z2",
+    tag: "santé",
+    place: "Santé",
+    planDay: 3,
+    cardio: true,
+    ex: [{
+      n: "Z2 continu (30-40 min)",
+      s: 1,
+      r: "30-40 min",
+      rpe: "4-5",
+      rest: 0,
+      g: "Cardio",
+      note: "Santé cardiovasculaire, pas levier de déficit. Colonnes : minutes / FC moyenne"
+    }]
+  },
+  Z2: {
+    label: "Boxe (optionnel)",
+    tag: "santé",
+    place: "Santé",
+    planDay: 6,
+    cardio: true,
+    ex: [{
+      n: "Sac + échauffement",
+      s: 1,
+      r: "40 min",
+      rpe: "7",
+      rest: 0,
+      g: "Cardio",
+      note: "Colonnes : minutes / FC moyenne"
+    }]
+  }
+};
+const SESSION_KEYS = Object.keys(PROGRAM);
+const PLACES = ["Salle", "Élastiques", "Hôtel", "Sans matériel", "Santé"];
+
+/* Cibles de séries dures / semaine — Programmes_Entrainement.md §1 */
+const VOL_TARGETS = {
+  "Épaules": 14,
+  "Dos": 17,
+  "Pec": 13,
+  "Triceps": 10,
+  "Biceps": 10,
+  "Abdos": 9,
+  "Jambes": 9,
+  "Delt. post.": 7
+};
+const PLAN_WEEK = [{
+  d: 1,
+  n: "lun",
+  s: "J1 Push A"
+}, {
+  d: 2,
+  n: "mar",
+  s: "J2 Pull A"
+}, {
+  d: 3,
+  n: "mer",
+  s: "Cardio Z2 ou marche"
+}, {
+  d: 4,
+  n: "jeu",
+  s: "J3 Push B"
+}, {
+  d: 5,
+  n: "ven",
+  s: "J4 Pull B + Jambes"
+}, {
+  d: 6,
+  n: "sam",
+  s: "Boxe / cardio léger"
+}, {
+  d: 0,
+  n: "dim",
+  s: "Repos · batch cooking"
+}];
+
+/* ============================ NUTRITION ============================ */
+/* Blocs du plan — Programme_Alimentation.md §2 et §3 */
+const BLOCKS = {
+  pdj: {
+    id: "b1",
+    n: "Petit-déjeuner optimisé (skyr 220 g)",
+    kcal: 450,
+    p: 35,
+    c: 55,
+    f: 10,
+    u: "portion",
+    cat: "Plan"
+  },
+  boeuf: {
+    id: "b2",
+    n: "Repas bœuf 5 % · féculent · légumes",
+    kcal: 945,
+    p: 65,
+    c: 116,
+    f: 24,
+    u: "portion",
+    cat: "Plan"
+  },
+  poulet: {
+    id: "b3",
+    n: "Repas poulet · féculent · légumes",
+    kcal: 945,
+    p: 65,
+    c: 116,
+    f: 24,
+    u: "portion",
+    cat: "Plan"
+  },
+  shaker: {
+    id: "b4",
+    n: "Shaker whey 40 g dans l'eau",
+    kcal: 155,
+    p: 34,
+    c: 3,
+    f: 2,
+    u: "shaker",
+    cat: "Plan"
+  },
+  banane: {
+    id: "b5",
+    n: "Banane pré-séance",
+    kcal: 105,
+    p: 1.3,
+    c: 24,
+    f: 0.4,
+    u: "unité",
+    cat: "Plan"
+  },
+  repasAllege: {
+    id: "b6",
+    n: "Repas − banane déduite (−30 g féculent sec)",
+    kcal: 840,
+    p: 65,
+    c: 90,
+    f: 24,
+    u: "portion",
+    cat: "Plan"
+  }
+};
+const SEED_LIB = [BLOCKS.pdj, BLOCKS.boeuf, BLOCKS.poulet, BLOCKS.shaker, BLOCKS.banane, BLOCKS.repasAllege,
+// Composants
+{
+  id: "c1",
+  n: "Bœuf haché 5 % (cru)",
+  kcal: 136,
+  p: 21.2,
+  c: 0,
+  f: 4.8,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c2",
+  n: "Poulet blanc (cru)",
+  kcal: 111,
+  p: 23,
+  c: 0,
+  f: 1.3,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c3",
+  n: "Riz complet (sec)",
+  kcal: 350,
+  p: 8,
+  c: 72,
+  f: 2.5,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c4",
+  n: "Pâtes complètes (sec)",
+  kcal: 350,
+  p: 13,
+  c: 66,
+  f: 2.5,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c5",
+  n: "Semoule complète (sec)",
+  kcal: 350,
+  p: 12,
+  c: 70,
+  f: 1.5,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c6",
+  n: "Pomme de terre (crue)",
+  kcal: 77,
+  p: 2,
+  c: 17,
+  f: 0.1,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c7",
+  n: "Patate douce (crue)",
+  kcal: 86,
+  p: 1.6,
+  c: 20,
+  f: 0.1,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c8",
+  n: "Légumes surgelés nature",
+  kcal: 30,
+  p: 2,
+  c: 4,
+  f: 0.3,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c9",
+  n: "Huile d'olive",
+  kcal: 90,
+  p: 0,
+  c: 0,
+  f: 10,
+  u: "10 g",
+  cat: "Composant"
+}, {
+  id: "c10",
+  n: "Skyr nature",
+  kcal: 62,
+  p: 10.5,
+  c: 4,
+  f: 0.2,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c11",
+  n: "Whey",
+  kcal: 39,
+  p: 8.5,
+  c: 0.7,
+  f: 0.5,
+  u: "10 g",
+  cat: "Composant"
+}, {
+  id: "c12",
+  n: "Œuf entier",
+  kcal: 70,
+  p: 6.3,
+  c: 0.4,
+  f: 5,
+  u: "unité",
+  cat: "Composant"
+}, {
+  id: "c13",
+  n: "Blancs d'œufs",
+  kcal: 48,
+  p: 11,
+  c: 0.7,
+  f: 0.2,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c14",
+  n: "Flocons d'avoine",
+  kcal: 375,
+  p: 13,
+  c: 60,
+  f: 7,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c15",
+  n: "Framboises",
+  kcal: 52,
+  p: 1.2,
+  c: 5,
+  f: 0.7,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c16",
+  n: "Lait demi-écrémé",
+  kcal: 46,
+  p: 3.2,
+  c: 4.8,
+  f: 1.6,
+  u: "100 ml",
+  cat: "Composant"
+}, {
+  id: "c17",
+  n: "Haricots rouges cuits",
+  kcal: 110,
+  p: 8,
+  c: 15,
+  f: 0.5,
+  u: "100 g",
+  cat: "Composant"
+}, {
+  id: "c18",
+  n: "Chocolat noir > 70 %",
+  kcal: 55,
+  p: 0.8,
+  c: 4,
+  f: 3.8,
+  u: "carré 10 g",
+  cat: "Composant"
+},
+// Voyage / dépannage
+{
+  id: "v1",
+  n: "Poulet rôti rôtisserie",
+  kcal: 190,
+  p: 25,
+  c: 0,
+  f: 10,
+  u: "100 g",
+  cat: "Voyage"
+}, {
+  id: "v2",
+  n: "Œufs durs ×2",
+  kcal: 140,
+  p: 12.6,
+  c: 0.8,
+  f: 10,
+  u: "×2",
+  cat: "Voyage"
+}, {
+  id: "v3",
+  n: "Jambon blanc",
+  kcal: 110,
+  p: 20,
+  c: 1,
+  f: 3,
+  u: "100 g",
+  cat: "Voyage"
+}, {
+  id: "v4",
+  n: "Beef jerky",
+  kcal: 90,
+  p: 15,
+  c: 5,
+  f: 1,
+  u: "30 g",
+  cat: "Voyage"
+}, {
+  id: "v5",
+  n: "Riz micro-ondable",
+  kcal: 190,
+  p: 4,
+  c: 38,
+  f: 2,
+  u: "sachet 125 g",
+  cat: "Voyage"
+}, {
+  id: "v6",
+  n: "Monster ZERO",
+  kcal: 10,
+  p: 0,
+  c: 3,
+  f: 0,
+  u: "500 ml",
+  cat: "Voyage"
+}, {
+  id: "v7",
+  n: "Repas resto estimé (grillade + légumes)",
+  kcal: 700,
+  p: 50,
+  c: 45,
+  f: 33,
+  u: "repas",
+  cat: "Voyage"
+}, {
+  id: "v8",
+  n: "Repas social non maîtrisé (estimation haute)",
+  kcal: 1100,
+  p: 45,
+  c: 100,
+  f: 55,
+  u: "repas",
+  cat: "Voyage"
+}];
+const FECULENTS = {
+  "Pomme de terre": {
+    boeuf: "600 g cru",
+    poulet: "660 g cru",
+    courses: "6,3 kg"
+  },
+  "Patate douce": {
+    boeuf: "540 g cru",
+    poulet: "600 g cru",
+    courses: "5,7 kg"
+  },
+  "Riz complet": {
+    boeuf: "130 g sec",
+    poulet: "140 g sec",
+    courses: "1,35 kg"
+  },
+  "Pâtes complètes": {
+    boeuf: "130 g sec",
+    poulet: "140 g sec",
+    courses: "1,35 kg"
+  },
+  "Semoule complète": {
+    boeuf: "130 g sec",
+    poulet: "140 g sec",
+    courses: "1,35 kg"
+  }
+};
+const SUPPS = [{
+  k: "crea",
+  n: "Créatine 5 g",
+  d: "7 j/7, même les jours off"
+}, {
+  k: "o3",
+  n: "Oméga-3 2 g EPA+DHA",
+  d: "Avec un repas gras"
+}, {
+  k: "vitd",
+  n: "Vitamine D 2000 UI",
+  d: "Avec un repas gras"
+}];
+const PREP_TASKS = ["Acheter un mètre ruban (~5 €) — sans lui, impossible de distinguer perte de gras et perte de muscle", "Commander l'oméga-3 (2 g EPA+DHA/j) — le remplaçant du collagène", "Vérifier le stock : whey (~280 g/sem), créatine, vitamine D", "Dimanche : courses de la liste + batch cooking 10 boîtes (5 bœuf + 5 poulet)", "Dimanche soir : mesures de référence + photos J0 (face/dos/profil, à jeun)", "Dès ce soir : caféine avant 14 h — le levier sommeil se règle avant le départ"];
+const MEASURE_FIELDS = [{
+  k: "cou",
+  n: "Cou"
+}, {
+  k: "epaules",
+  n: "Épaules"
+}, {
+  k: "poitrine",
+  n: "Poitrine"
+}, {
+  k: "brasD",
+  n: "Bras D contracté"
+}, {
+  k: "brasG",
+  n: "Bras G contracté"
+}, {
+  k: "taille",
+  n: "Taille (nombril)"
+}, {
+  k: "hanches",
+  n: "Hanches"
+}, {
+  k: "cuisse",
+  n: "Cuisse"
+}];
+
+/* ============================ STOCKAGE — local-first + sync Supabase ============================ */
+/* Écriture locale IMMÉDIATE (localStorage) = jamais de perte.
+   Push cloud débouncé + retry. Pull/merge au démarrage. Resync auto au retour du réseau. */
+const K = {
+  days: "sc2:days",
+  lib: "sc2:lib",
+  wk: "sc2:workouts",
+  ms: "sc2:measures",
+  set: "sc2:settings",
+  meta: "sc2:meta"
+};
+const DEFAULT_SETTINGS = {
+  targetRatePct: 0.5,
+  protPerKg: 2.3,
+  fatPerKg: 0.69,
+  startWeight: 87,
+  mode: "deficit",
+  planDeficit: 2500,
+  planMaintenance: 2950,
+  feculent: "Pomme de terre",
+  startDate: "2026-07-27",
+  lastDeload: null,
+  prep: {}
+};
+const LSW = window.localStorage;
+let notify = () => {};
+const setSaveNotifier = fn => {
+  notify = fn;
+};
+const lsGet = key => {
+  try {
+    const r = LSW.getItem(key);
+    return r ? JSON.parse(r) : null;
+  } catch (e) {
+    return null;
+  }
+};
+const lsSet = (key, v, at) => {
+  try {
+    LSW.setItem(key, JSON.stringify({
+      v,
+      at
+    }));
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+async function loadKey(key, fallback) {
+  const r = lsGet(key);
+  return r && r.v !== undefined && r.v !== null ? r.v : fallback;
+}
+async function storageProbe() {
+  try {
+    LSW.setItem("sc2:probe", "1");
+    if (LSW.getItem("sc2:probe") !== "1") throw 0;
+    LSW.removeItem("sc2:probe");
+    return {
+      ok: true
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      err: "localStorage indisponible (navigation privée ?)"
+    };
+  }
+}
+const dirty = new Set();
+const timers = {};
+async function pushKey(key) {
+  const rec = lsGet(key);
+  if (!rec) {
+    dirty.delete(key);
+    return true;
+  }
+  if (!window.__sb || !window.__uid) {
+    dirty.add(key);
+    return false;
+  }
+  for (let a = 0; a < 3; a++) {
+    try {
+      const {
+        error
+      } = await window.__sb.from("kv").upsert({
+        user_id: window.__uid,
+        k: key,
+        v: rec.v,
+        at: rec.at
+      }, {
+        onConflict: "user_id,k"
+      });
+      if (error) throw error;
+      dirty.delete(key);
+      notify({
+        ok: true,
+        at: Date.now()
+      });
+      return true;
+    } catch (e) {
+      if (a === 2) {
+        dirty.add(key);
+        notify({
+          ok: false,
+          at: Date.now(),
+          err: String(e && e.message || e)
+        });
+        return false;
+      }
+      await new Promise(r => setTimeout(r, 500 * (a + 1)));
+    }
+  }
+  return false;
+}
+function schedule(key, value, delay = 700) {
+  lsSet(key, value, Date.now()); // local d'abord, toujours
+  dirty.add(key);
+  clearTimeout(timers[key]);
+  timers[key] = setTimeout(() => pushKey(key), delay);
+}
+async function flushAll() {
+  const ks = [...dirty];
+  for (const k of ks) {
+    clearTimeout(timers[k]);
+    await pushKey(k);
+  }
+  return ks.length;
+}
+async function cloudPull() {
+  try {
+    if (!window.__sb || !window.__uid) return {
+      ok: false,
+      err: "non connecté"
+    };
+    const {
+      data,
+      error
+    } = await window.__sb.from("kv").select("k,v,at");
+    if (error) throw error;
+    const rows = data || [];
+    // le plus récent gagne, clé par clé
+    rows.forEach(row => {
+      const loc = lsGet(row.k);
+      if (!loc || (row.at || 0) > (loc.at || 0)) lsSet(row.k, row.v, row.at || Date.now());
+    });
+    // pousser ce qui est plus récent en local
+    for (const key of Object.values(K)) {
+      const loc = lsGet(key);
+      const remote = rows.find(r => r.k === key);
+      if (loc && (!remote || (loc.at || 0) > (remote.at || 0))) {
+        dirty.add(key);
+        await pushKey(key);
+      }
+    }
+    return {
+      ok: true,
+      n: rows.length
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      err: String(e && e.message || e)
+    };
+  }
+}
+window.addEventListener("online", () => {
+  flushAll();
+});
+
+/* ============================ MOTEUR ============================ */
+function trendSeries(weighIns, alpha = 0.25) {
+  const out = [];
+  let t = null;
+  weighIns.forEach(w => {
+    t = t === null ? w.v : t + alpha * (w.v - t);
+    out.push({
+      d: w.d,
+      raw: w.v,
+      trend: t
+    });
+  });
+  return out;
+}
+function computeEngine(days, settings) {
+  const s = {
+    ...DEFAULT_SETTINGS,
+    ...settings
+  };
+  const entries = Object.entries(days).sort((a, b) => a[0] < b[0] ? -1 : 1);
+  const weighIns = entries.filter(([, v]) => v.weight > 0).map(([d, v]) => ({
+    d,
+    v: v.weight
+  }));
+  const trend = trendSeries(weighIns);
+  const currentTrend = trend.length ? trend[trend.length - 1].trend : null;
+  const lastWeight = weighIns.length ? weighIns[weighIns.length - 1].v : null;
+  const today = todayKey();
+  const winStart = addDays(today, -20);
+  const inWin = entries.filter(([d]) => d >= winStart && d <= today);
+  const kcalDays = inWin.filter(([, v]) => v.kcal > 0);
+  const trendWin = trend.filter(t => t.d >= winStart && t.d <= today);
+  let tdee = null,
+    ratePerWeek = null,
+    ratePct = null,
+    confidence = "insuffisant",
+    spanDays = 0,
+    meanKcal = null;
+  if (kcalDays.length >= 5) meanKcal = mean(kcalDays.map(([, v]) => v.kcal));
+  if (trendWin.length >= 3 && kcalDays.length >= 7) {
+    const a = trendWin[0],
+      b = trendWin[trendWin.length - 1];
+    spanDays = daysBetween(a.d, b.d);
+    if (spanDays >= 7) {
+      const deltaKg = b.trend - a.trend;
+      ratePerWeek = deltaKg / spanDays * 7;
+      ratePct = currentTrend ? ratePerWeek / currentTrend * 100 : null;
+      tdee = meanKcal - deltaKg * KCAL_PER_KG / spanDays;
+      if (kcalDays.length >= 14 && trendWin.length >= 6 && spanDays >= 14) confidence = "haute";else if (kcalDays.length >= 10 && spanDays >= 10) confidence = "moyenne";else confidence = "faible";
+    }
+  }
+  const bw = currentTrend || lastWeight || s.startWeight;
+  const isMaint = s.mode === "maintenance";
+  const targetKgWeek = s.targetRatePct / 100 * bw;
+  const dailyDeficit = targetKgWeek * KCAL_PER_KG / 7;
+  let targetKcal, calibrated;
+  if (tdee && confidence !== "faible" && confidence !== "insuffisant") {
+    targetKcal = Math.round((isMaint ? tdee : tdee - dailyDeficit) / 10) * 10;
+    calibrated = true;
+  } else {
+    targetKcal = isMaint ? s.planMaintenance : s.planDeficit;
+    calibrated = false;
+  }
+
+  // Protéines et lipides fixes ; les glucides sont l'unique molette (Programme_Alimentation §1)
+  const protG = Math.round(bw * s.protPerKg);
+  const fatG = Math.round(bw * s.fatPerKg);
+  const carbG = Math.max(0, Math.round((targetKcal - protG * 4 - fatG * 9) / 4));
+  return {
+    entries,
+    weighIns,
+    trend,
+    currentTrend,
+    lastWeight,
+    tdee,
+    ratePerWeek,
+    ratePct,
+    confidence,
+    spanDays,
+    meanKcal,
+    bw,
+    targetKcal,
+    calibrated,
+    protG,
+    fatG,
+    carbG,
+    isMaint,
+    kcalDaysCount: kcalDays.length,
+    settings: s
+  };
+}
+function rolling(days, n, field) {
+  const today = todayKey(),
+    start = addDays(today, -(n - 1));
+  const vals = Object.entries(days).filter(([d, v]) => d >= start && d <= today && v[field] > 0).map(([, v]) => v[field]);
+  return vals.length ? mean(vals) : null;
+}
+
+/* ============================ UI ============================ */
+const Panel = ({
+  children,
+  style,
+  className = ""
+}) => /*#__PURE__*/React.createElement("div", {
+  className: `rounded-xl ${className}`,
+  style: {
+    background: T.panel,
+    border: `1px solid ${T.line}`,
+    ...style
+  }
+}, children);
+const Eyebrow = ({
+  children,
+  color = T.faint
+}) => /*#__PURE__*/React.createElement("div", {
+  style: {
+    font: `500 10px/1.3 ${T.mono}`,
+    letterSpacing: "0.14em",
+    color,
+    textTransform: "uppercase"
+  }
+}, children);
+const Num = ({
+  v,
+  unit,
+  size = 34,
+  color = T.bone,
+  d = 0
+}) => /*#__PURE__*/React.createElement("div", {
+  style: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 4
+  }
+}, /*#__PURE__*/React.createElement("span", {
+  style: {
+    font: `600 ${size}px/1 ${T.mono}`,
+    color,
+    fontVariantNumeric: "tabular-nums"
+  }
+}, typeof v === "number" ? nf(v, d) : v), unit && /*#__PURE__*/React.createElement("span", {
+  style: {
+    font: `400 ${Math.round(size * 0.36)}px/1 ${T.mono}`,
+    color: T.dim
+  }
+}, unit));
+const Field = ({
+  label,
+  value,
+  onChange,
+  unit,
+  step = "any",
+  type = "number",
+  placeholder
+}) => /*#__PURE__*/React.createElement("label", {
+  className: "flex flex-col gap-1 flex-1 min-w-0"
+}, /*#__PURE__*/React.createElement("span", {
+  style: {
+    font: `500 10px/1.3 ${T.mono}`,
+    letterSpacing: ".1em",
+    color: T.faint,
+    textTransform: "uppercase"
+  }
+}, label), /*#__PURE__*/React.createElement("div", {
+  className: "flex items-center gap-1 rounded-lg px-2",
+  style: {
+    background: T.panel2,
+    border: `1px solid ${T.line}`,
+    height: 42
+  }
+}, /*#__PURE__*/React.createElement("input", {
+  type: type,
+  step: step,
+  inputMode: type === "number" ? "decimal" : undefined,
+  value: value ?? "",
+  placeholder: placeholder,
+  onChange: e => onChange(e.target.value === "" ? null : type === "number" ? Number(e.target.value) : e.target.value),
+  className: "w-full bg-transparent outline-none",
+  style: {
+    font: `500 16px ${T.mono}`,
+    color: T.bone,
+    border: "none"
+  }
+}), unit && /*#__PURE__*/React.createElement("span", {
+  style: {
+    font: `400 11px ${T.mono}`,
+    color: T.faint
+  }
+}, unit)));
+const Btn = ({
+  children,
+  onClick,
+  tone = "ghost",
+  size = "md",
+  style,
+  disabled
+}) => {
+  const tones = {
+    solid: {
+      background: T.amber,
+      color: "#1A1508",
+      border: `1px solid ${T.amber}`
+    },
+    ghost: {
+      background: "transparent",
+      color: T.bone,
+      border: `1px solid ${T.line}`
+    },
+    quiet: {
+      background: T.panel2,
+      color: T.dim,
+      border: `1px solid ${T.line}`
+    }
+  };
+  const sizes = {
+    sm: {
+      height: 30,
+      padding: "0 10px",
+      fontSize: 11
+    },
+    md: {
+      height: 40,
+      padding: "0 14px",
+      fontSize: 13
+    }
+  };
+  return /*#__PURE__*/React.createElement("button", {
+    onClick: onClick,
+    disabled: disabled,
+    className: "rounded-lg inline-flex items-center justify-center gap-1",
+    style: {
+      ...tones[tone],
+      ...sizes[size],
+      font: `600 ${sizes[size].fontSize}px ${T.sans}`,
+      opacity: disabled ? 0.4 : 1,
+      cursor: disabled ? "default" : "pointer",
+      ...style
+    }
+  }, children);
+};
+const Chip = ({
+  children,
+  active,
+  onClick,
+  color = T.amber
+}) => /*#__PURE__*/React.createElement("button", {
+  onClick: onClick,
+  className: "rounded-full px-3 whitespace-nowrap",
+  style: {
+    height: 32,
+    background: active ? color : "transparent",
+    color: active ? "#1A1508" : T.dim,
+    border: `1px solid ${active ? color : T.line}`,
+    font: `600 12px ${T.sans}`,
+    cursor: "pointer"
+  }
+}, children);
+const DateNav = ({
+  date,
+  setDate
+}) => /*#__PURE__*/React.createElement("div", {
+  className: "flex gap-1"
+}, /*#__PURE__*/React.createElement(Btn, {
+  size: "sm",
+  tone: "quiet",
+  onClick: () => setDate(addDays(date, -1))
+}, "◀"), /*#__PURE__*/React.createElement(Btn, {
+  size: "sm",
+  tone: "quiet",
+  onClick: () => setDate(todayKey())
+}, "Auj."), /*#__PURE__*/React.createElement(Btn, {
+  size: "sm",
+  tone: "quiet",
+  onClick: () => setDate(addDays(date, 1)),
+  disabled: date >= todayKey()
+}, "▶"));
+
+/* ---------- signature : bande de tendance ---------- */
+function TrendStrip({
+  engine,
+  days
+}) {
+  const W = 700,
+    H = 92,
+    PAD = 8,
+    N = 42;
+  const today = todayKey();
+  const dates = Array.from({
+    length: N
+  }, (_, i) => addDays(today, -(N - 1 - i)));
+  const trendMap = Object.fromEntries(engine.trend.map(t => [t.d, t]));
+  const win = engine.trend.filter(t => t.d >= dates[0]);
+  const all = [...win.map(t => t.trend), ...win.map(t => t.raw)];
+  if (all.length < 2) return /*#__PURE__*/React.createElement("div", {
+    className: "px-4 py-6 text-center",
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.faint
+    }
+  }, "La bande apparaît après 3 pesées.");
+  const min = Math.min(...all) - 0.3,
+    max = Math.max(...all) + 0.3;
+  const y = v => PAD + (1 - (v - min) / (max - min)) * (H - PAD * 2 - 8);
+  const x = i => i / (N - 1) * (W - 20) + 10;
+  const pts = dates.map((d, i) => trendMap[d] ? {
+    i,
+    ...trendMap[d]
+  } : null).filter(Boolean);
+  const path = pts.map((p, k) => `${k === 0 ? "M" : "L"}${x(p.i).toFixed(1)},${y(p.trend).toFixed(1)}`).join(" ");
+  return /*#__PURE__*/React.createElement("svg", {
+    viewBox: `0 0 ${W} ${H}`,
+    width: "100%",
+    height: H,
+    style: {
+      display: "block"
+    }
+  }, dates.map((d, i) => {
+    const day = days[d];
+    const done = day && day.kcal > 0;
+    return /*#__PURE__*/React.createElement("g", {
+      key: d
+    }, parseYmd(d).getDay() === 1 && /*#__PURE__*/React.createElement("line", {
+      x1: x(i),
+      y1: 0,
+      x2: x(i),
+      y2: H - 8,
+      stroke: T.line
+    }), /*#__PURE__*/React.createElement("rect", {
+      x: x(i) - 1.2,
+      y: H - 6,
+      width: "2.4",
+      height: "4",
+      fill: done ? T.amber : T.line
+    }));
+  }), /*#__PURE__*/React.createElement("path", {
+    d: path,
+    fill: "none",
+    stroke: T.amber,
+    strokeWidth: "2",
+    strokeLinejoin: "round",
+    strokeLinecap: "round"
+  }), pts.map(p => /*#__PURE__*/React.createElement("circle", {
+    key: p.d,
+    cx: x(p.i),
+    cy: y(p.raw),
+    r: "2.2",
+    fill: T.peri
+  })), pts.length > 0 && /*#__PURE__*/React.createElement("circle", {
+    cx: x(pts[pts.length - 1].i),
+    cy: y(pts[pts.length - 1].trend),
+    r: "4",
+    fill: T.amber,
+    stroke: T.ground,
+    strokeWidth: "2"
+  }));
+}
+
+/* ============================ RÉVEIL ============================ */
+function Reveil({
+  days,
+  setDay,
+  engine,
+  settings,
+  setSettings
+}) {
+  const [date, setDate] = useState(todayKey());
+  const d = days[date] || {};
+  const upd = patch => setDay(date, patch);
+  const supps = d.supps || {};
+  const tags = d.tags || {};
+  const sleep7 = rolling(days, 7, "sleep");
+  const steps7 = rolling(days, 7, "steps");
+  const filled = [d.sleep > 0, d.steps > 0, d.weight > 0].filter(Boolean).length;
+  const caf = d.cafHour;
+  const cafLate = caf !== null && caf !== undefined && caf > 14;
+  const plan = PLAN_WEEK.find(p => p.d === parseYmd(date).getDay());
+  const startDd = daysBetween(settings.startDate || "2026-07-27", todayKey());
+  const prep = settings.prep || {};
+  const prepDone = PREP_TASKS.filter((_, i) => prep[i]).length;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-3"
+  }, startDd < 0 && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4",
+    style: {
+      borderColor: T.amber + "77"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-baseline justify-between"
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: T.amber
+  }, "Départ lundi 27/07 · préparation"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `600 16px ${T.mono}`,
+      color: T.amber
+    }
+  }, "J−", -startDd)), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-1 mt-2"
+  }, PREP_TASKS.map((t, i) => /*#__PURE__*/React.createElement("button", {
+    key: i,
+    onClick: () => setSettings({
+      ...settings,
+      prep: {
+        ...prep,
+        [i]: !prep[i]
+      }
+    }),
+    className: "flex items-center gap-3 rounded-lg px-3 py-2 text-left",
+    style: {
+      background: T.panel2,
+      border: `1px solid ${prep[i] ? T.moss + "66" : T.line}`,
+      cursor: "pointer"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 18,
+      height: 18,
+      borderRadius: 5,
+      background: prep[i] ? T.moss : "transparent",
+      border: `1px solid ${prep[i] ? T.moss : T.line}`,
+      color: "#12180C",
+      font: `700 11px ${T.mono}`,
+      display: "grid",
+      placeItems: "center",
+      flexShrink: 0
+    }
+  }, prep[i] ? "✓" : ""), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: prep[i] ? T.faint : T.bone,
+      textDecoration: prep[i] ? "line-through" : "none",
+      lineHeight: 1.4
+    }
+  }, t)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 10px ${T.mono}`,
+      color: T.faint,
+      marginTop: 8
+    }
+  }, prepDone, "/", PREP_TASKS.length, " · tu peux déjà logger sommeil/pas/poids pour amorcer la tendance")), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-start justify-between mb-3"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Eyebrow, null, "Saisie du matin"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `600 20px ${T.sans}`,
+      color: T.bone,
+      marginTop: 4
+    }
+  }, dowFr(date), " ", shortFr(date)), plan && /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.mono}`,
+      color: T.amber,
+      marginTop: 2
+    }
+  }, "au programme : ", plan.s)), /*#__PURE__*/React.createElement(DateNav, {
+    date: date,
+    setDate: setDate
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mb-2"
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "Sommeil",
+    unit: "h",
+    value: d.sleep,
+    onChange: v => upd({
+      sleep: v
+    }),
+    step: "0.25"
+  }), /*#__PURE__*/React.createElement(Field, {
+    label: `Pas (${dowFr(addDays(date, -1))})`,
+    value: d.steps,
+    onChange: v => upd({
+      steps: v
+    }),
+    step: "100"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mb-3"
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "Poids à jeun",
+    unit: "kg",
+    value: d.weight,
+    onChange: v => upd({
+      weight: v
+    }),
+    step: "0.1"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-1 flex-1"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `500 10px/1.3 ${T.mono}`,
+      letterSpacing: ".1em",
+      color: T.faint,
+      textTransform: "uppercase"
+    }
+  }, "Qualité sommeil"), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-1",
+    style: {
+      height: 42
+    }
+  }, [1, 2, 3, 4, 5].map(q => /*#__PURE__*/React.createElement("button", {
+    key: q,
+    onClick: () => upd({
+      sleepQ: d.sleepQ === q ? null : q
+    }),
+    className: "flex-1 rounded-lg",
+    style: {
+      background: d.sleepQ >= q ? T.peri : T.panel2,
+      border: `1px solid ${d.sleepQ >= q ? T.peri : T.line}`,
+      color: d.sleepQ >= q ? "#0F1020" : T.faint,
+      font: `600 12px ${T.mono}`,
+      cursor: "pointer"
+    }
+  }, q))))), d.weight > 0 && engine.currentTrend && Math.abs(d.weight - engine.currentTrend) > 2 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.amber,
+      marginBottom: 8,
+      lineHeight: 1.4
+    }
+  }, "Écart de ", nf(Math.abs(d.weight - engine.currentTrend), 1), " kg vs ta tendance — faute de frappe ? Sinon c'est de l'eau (sel, glucides, transit) : juge la tendance, pas ce chiffre."), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex-1 rounded-full",
+    style: {
+      height: 4,
+      background: T.line,
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: `${filled / 3 * 100}%`,
+      height: "100%",
+      background: T.amber,
+      transition: "width .3s"
+    }
+  })), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `500 10px ${T.mono}`,
+      color: T.faint
+    }
+  }, filled, "/3"))), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Stack du jour"), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-1 mt-2"
+  }, SUPPS.map(s => /*#__PURE__*/React.createElement("button", {
+    key: s.k,
+    onClick: () => upd({
+      supps: {
+        ...supps,
+        [s.k]: !supps[s.k]
+      }
+    }),
+    className: "flex items-center gap-3 rounded-lg px-3 py-2 text-left",
+    style: {
+      background: T.panel2,
+      border: `1px solid ${supps[s.k] ? T.moss + "77" : T.line}`,
+      cursor: "pointer"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 20,
+      height: 20,
+      borderRadius: 5,
+      background: supps[s.k] ? T.moss : "transparent",
+      border: `1px solid ${supps[s.k] ? T.moss : T.line}`,
+      color: "#12180C",
+      font: `700 12px ${T.mono}`,
+      display: "grid",
+      placeItems: "center"
+    }
+  }, supps[s.k] ? "✓" : ""), /*#__PURE__*/React.createElement("span", {
+    className: "flex-1"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `500 13px ${T.sans}`,
+      color: T.bone,
+      display: "block"
+    }
+  }, s.n), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `400 10px ${T.mono}`,
+      color: T.faint
+    }
+  }, s.d)))))), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4",
+    style: {
+      borderColor: cafLate ? T.brick + "77" : T.line
+    }
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: cafLate ? T.brick : T.faint
+  }, "Caféine · levier sommeil n° 1"), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 items-end mt-2"
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "Heure de prise",
+    unit: "h",
+    value: d.cafHour,
+    onChange: v => upd({
+      cafHour: v
+    }),
+    step: "0.5",
+    placeholder: "13.5"
+  }), /*#__PURE__*/React.createElement(Field, {
+    label: "Dose",
+    unit: "mg",
+    value: d.cafMg,
+    onChange: v => upd({
+      cafMg: v
+    }),
+    step: "10",
+    placeholder: "160"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: cafLate ? T.brick : T.faint,
+      marginTop: 8,
+      lineHeight: 1.45
+    }
+  }, cafLate ? `Prise à ${caf} h : demi-vie 5-6 h, il en reste trop au coucher. La cible est 13-14 h — tu gardes ~55 % d'effet sur la séance et tu supprimes le coût sommeil.` : "Cible 13-14 h, 200-400 mg, Monster ZERO uniquement. Pas tous les jours : réserve-la aux 2 séances les plus dures.")), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Marqueurs de la veille"), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 flex-wrap mt-2"
+  }, [["photo", "Photo prise", T.moss], ["alcool", "Alcool", T.brick], ["sel", "Repas très salé", T.brick], ["horsplan", "Repas hors plan", T.amber], ["voyage", "Déplacement", T.peri]].map(([k, n, c]) => /*#__PURE__*/React.createElement(Chip, {
+    key: k,
+    active: !!tags[k],
+    color: c,
+    onClick: () => upd({
+      tags: {
+        ...tags,
+        [k]: !tags[k]
+      }
+    })
+  }, n))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.faint,
+      marginTop: 10,
+      lineHeight: 1.45
+    }
+  }, "Sel et alcool expliquent la plupart des faux pics de poids du lendemain. Les cocher t'évite de paniquer sur du bruit d'eau.")), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-2 gap-3"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Sommeil · moy. 7 j"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-2"
+  }, /*#__PURE__*/React.createElement(Num, {
+    v: sleep7,
+    unit: "h",
+    size: 26,
+    d: 1,
+    color: sleep7 && sleep7 < 7.5 ? T.brick : T.moss
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.faint,
+      marginTop: 6
+    }
+  }, sleep7 === null ? "Aucune donnée" : sleep7 < 7.5 ? "Sous ton besoin de 7 h 30" : "Dans la cible")), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Pas · moy. 7 j"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-2"
+  }, /*#__PURE__*/React.createElement(Num, {
+    v: steps7,
+    size: 26,
+    color: steps7 && steps7 < 8000 ? T.brick : T.moss
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.faint,
+      marginTop: 6
+    }
+  }, steps7 === null ? "Aucune donnée" : steps7 < 8000 ? "Cible 8-10 k" : "Cible atteinte"))), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Poids · 42 jours"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-2 -mx-1"
+  }, /*#__PURE__*/React.createElement(TrendStrip, {
+    engine: engine,
+    days: days
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-4"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `400 10px ${T.mono}`,
+      color: T.amber
+    }
+  }, "● tendance lissée"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `400 10px ${T.mono}`,
+      color: T.peri
+    }
+  }, "● pesée brute"))));
+}
+
+/* ============================ MACROS ============================ */
+function Macros({
+  days,
+  setDay,
+  lib,
+  setLib,
+  engine,
+  settings,
+  setSettings
+}) {
+  const [date, setDate] = useState(todayKey());
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState("Plan");
+  const [qty, setQty] = useState({});
+  const [showNew, setShowNew] = useState(false);
+  const [showBatch, setShowBatch] = useState(false);
+  const [nfd, setNfd] = useState({
+    n: "",
+    kcal: null,
+    p: null,
+    c: null,
+    f: null,
+    u: "portion"
+  });
+  const d = days[date] || {};
+  const meals = d.meals || [];
+  const tot = meals.reduce((a, m) => ({
+    kcal: a.kcal + m.kcal,
+    p: a.p + m.p,
+    c: a.c + m.c,
+    f: a.f + m.f
+  }), {
+    kcal: 0,
+    p: 0,
+    c: 0,
+    f: 0
+  });
+  const commit = nm => {
+    const t = nm.reduce((a, m) => ({
+      kcal: a.kcal + m.kcal,
+      p: a.p + m.p,
+      c: a.c + m.c,
+      f: a.f + m.f
+    }), {
+      kcal: 0,
+      p: 0,
+      c: 0,
+      f: 0
+    });
+    setDay(date, {
+      meals: nm,
+      kcal: Math.round(t.kcal),
+      prot: Math.round(t.p),
+      carb: Math.round(t.c),
+      fat: Math.round(t.f)
+    });
+  };
+  const addItems = items => {
+    const add = items.map(([it, m]) => ({
+      id: uid(),
+      n: it.n,
+      mult: m,
+      kcal: it.kcal * m,
+      p: it.p * m,
+      c: it.c * m,
+      f: it.f * m
+    }));
+    commit([...meals, ...add]);
+  };
+  const journeeType = on => {
+    const base = on ? [[BLOCKS.pdj, 1], [BLOCKS.repasAllege, 1], [BLOCKS.banane, 1], [BLOCKS.poulet, 1], [BLOCKS.shaker, 1]] : [[BLOCKS.pdj, 1], [BLOCKS.boeuf, 1], [BLOCKS.poulet, 1], [BLOCKS.shaker, 1]];
+    commit(base.map(([it, m]) => ({
+      id: uid(),
+      n: it.n,
+      mult: m,
+      kcal: it.kcal * m,
+      p: it.p * m,
+      c: it.c * m,
+      f: it.f * m
+    })));
+  };
+  const targets = {
+    kcal: engine.targetKcal,
+    p: engine.protG,
+    c: engine.carbG,
+    f: engine.fatG
+  };
+  const protOk = tot.p >= targets.p * 0.97;
+  const weekInfo = useMemo(() => {
+    const today = todayKey(),
+      dow = parseYmd(today).getDay(),
+      offset = dow === 0 ? 6 : dow - 1;
+    const monday = addDays(today, -offset);
+    const dates = Array.from({
+      length: 7
+    }, (_, i) => addDays(monday, i));
+    const past = dates.filter(x => x <= today);
+    const consumed = sum(past.map(x => days[x]?.kcal || 0));
+    const budget = targets.kcal * 7;
+    const remainingDays = Math.max(1, 7 - past.length + ((days[today]?.kcal || 0) > 0 ? 0 : 1));
+    return {
+      consumed,
+      budget,
+      remainingDays,
+      dates,
+      past
+    };
+  }, [days, targets.kcal]);
+  const cats = ["Plan", "Composant", "Voyage", "Perso"];
+  const filtered = lib.filter(x => {
+    const c = x.cat || "Perso";
+    return q ? x.n.toLowerCase().includes(q.toLowerCase()) : c === cat;
+  });
+  const MacroBar = ({
+    label,
+    val,
+    target,
+    color,
+    sacred
+  }) => {
+    const pct = target ? val / target * 100 : 0;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex-1"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-baseline justify-between mb-1"
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        font: `500 10px ${T.mono}`,
+        color: sacred ? T.peri : T.faint,
+        letterSpacing: ".08em"
+      }
+    }, label), /*#__PURE__*/React.createElement("span", {
+      style: {
+        font: `500 11px ${T.mono}`,
+        color: T.dim
+      }
+    }, nf(val), "/", nf(target))), /*#__PURE__*/React.createElement("div", {
+      className: "rounded-full",
+      style: {
+        height: sacred ? 8 : 6,
+        background: T.panel2,
+        overflow: "hidden"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: `${Math.min(100, pct)}%`,
+        height: "100%",
+        background: pct > 112 ? T.brick : color,
+        transition: "width .3s"
+      }
+    })));
+  };
+  const fec = FECULENTS[settings.feculent] || FECULENTS["Pomme de terre"];
+  return /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-3"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-start justify-between mb-3"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Eyebrow, null, engine.isMaint ? "Phase maintenance" : "Phase déficit"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `600 20px ${T.sans}`,
+      color: T.bone,
+      marginTop: 4
+    }
+  }, dowFr(date), " ", shortFr(date))), /*#__PURE__*/React.createElement(DateNav, {
+    date: date,
+    setDate: setDate
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-end justify-between mb-4"
+  }, /*#__PURE__*/React.createElement(Num, {
+    v: tot.kcal,
+    unit: "kcal",
+    size: 40,
+    color: T.amber
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "text-right"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Reste"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `600 22px ${T.mono}`,
+      color: tot.kcal > targets.kcal ? T.brick : T.moss,
+      marginTop: 2
+    }
+  }, tot.kcal > targets.kcal ? "+" : "", nf(targets.kcal - tot.kcal)))), /*#__PURE__*/React.createElement("div", {
+    className: "mb-3"
+  }, /*#__PURE__*/React.createElement(MacroBar, {
+    label: `PROTÉINES · PLANCHER ${protOk ? "ATTEINT" : "NON ATTEINT"}`,
+    val: tot.p,
+    target: targets.p,
+    color: protOk ? T.moss : T.peri,
+    sacred: true
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-3"
+  }, /*#__PURE__*/React.createElement(MacroBar, {
+    label: "GLUCIDES",
+    val: tot.c,
+    target: targets.c,
+    color: T.amber
+  }), /*#__PURE__*/React.createElement(MacroBar, {
+    label: "LIPIDES",
+    val: tot.f,
+    target: targets.f,
+    color: T.moss
+  }))), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: T.amber
+  }, "Journée type · 1 tap"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.faint,
+      margin: "6px 0 10px",
+      lineHeight: 1.45
+    }
+  }, "Petit-déj + 2 repas batch + shaker whey = 2 495 kcal · 199 P · 290 G · 60 L. La seule différence un jour d'entraînement, c'est la banane, déduite du déjeuner."), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2"
+  }, /*#__PURE__*/React.createElement(Btn, {
+    tone: "solid",
+    style: {
+      flex: 1
+    },
+    onClick: () => journeeType(true)
+  }, "Jour ON"), /*#__PURE__*/React.createElement(Btn, {
+    tone: "ghost",
+    style: {
+      flex: 1
+    },
+    onClick: () => journeeType(false)
+  }, "Jour OFF")), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mt-2"
+  }, /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: () => addItems([[BLOCKS.pdj, 1]])
+  }, "+ Petit-déj"), /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: () => addItems([[BLOCKS.boeuf, 1]])
+  }, "+ Bœuf"), /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: () => addItems([[BLOCKS.poulet, 1]])
+  }, "+ Poulet"), /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: () => addItems([[BLOCKS.shaker, 1]])
+  }, "+ Shaker"))), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-baseline justify-between"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Budget de la semaine"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `500 11px ${T.mono}`,
+      color: T.dim
+    }
+  }, nf(weekInfo.consumed), " / ", nf(weekInfo.budget))), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-full my-2",
+    style: {
+      height: 8,
+      background: T.panel2,
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: `${Math.min(100, weekInfo.consumed / weekInfo.budget * 100)}%`,
+      height: "100%",
+      background: weekInfo.consumed > weekInfo.budget ? T.brick : T.amber
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.dim,
+      lineHeight: 1.5
+    }
+  }, "Reste ", /*#__PURE__*/React.createElement("b", {
+    style: {
+      color: T.bone,
+      fontFamily: T.mono
+    }
+  }, nf(Math.max(0, weekInfo.budget - weekInfo.consumed)), " kcal"), " sur ", /*#__PURE__*/React.createElement("b", {
+    style: {
+      color: T.bone
+    }
+  }, weekInfo.remainingDays, " j"), " →", " ", /*#__PURE__*/React.createElement("b", {
+    style: {
+      color: T.amber,
+      fontFamily: T.mono
+    }
+  }, nf(Math.max(0, weekInfo.budget - weekInfo.consumed) / weekInfo.remainingDays), " kcal/j"), ". Un repas de famille se lisse sur 2-3 jours, jamais par une journée à 800 kcal.")), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Batch du dimanche"), /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: () => setShowBatch(!showBatch)
+  }, showBatch ? "Fermer" : "Liste de courses")), showBatch && /*#__PURE__*/React.createElement("div", {
+    className: "mt-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 flex-wrap mb-3"
+  }, Object.keys(FECULENTS).map(f => /*#__PURE__*/React.createElement(Chip, {
+    key: f,
+    active: settings.feculent === f,
+    onClick: () => setSettings({
+      ...settings,
+      feculent: f
+    })
+  }, f))), [["Bœuf haché 5 %", "1,25 kg (5 × 250 g cru)"], ["Poulet blanc", "1,15 kg (5 × 230 g cru)"], [settings.feculent, fec.courses], ["Légumes surgelés nature", "2 kg (2-3 mélanges)"], ["Huile d'olive", "~125 g"], ["Skyr", "1,55 kg (7 × 220 g)"], ["Flocons d'avoine", "300 g"], ["Lait", "700 ml"], ["Framboises", "700 g"], ["Whey", "~280 g (7 × 40 g)"], ["Bananes", "4"]].map(([n, v]) => /*#__PURE__*/React.createElement("div", {
+    key: n,
+    className: "flex justify-between py-1",
+    style: {
+      borderBottom: `1px solid ${T.line}`
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.dim
+    }
+  }, n), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `500 12px ${T.mono}`,
+      color: T.bone
+    }
+  }, v))), /*#__PURE__*/React.createElement("div", {
+    className: "mt-3 rounded-lg p-3",
+    style: {
+      background: T.panel2
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `500 11px ${T.mono}`,
+      color: T.amber,
+      marginBottom: 6
+    }
+  }, "PORTIONS PAR REPAS"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.dim,
+      lineHeight: 1.6
+    }
+  }, "Bœuf 250 g cru + ", fec.boeuf, " + 200 g légumes + 10 g huile", /*#__PURE__*/React.createElement("br", null), "Poulet 230 g cru + ", fec.poulet, " + 200 g légumes + 15 g huile", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.faint
+    }
+  }, "8 boîtes au frigo (lun→jeu) · 2 au congélateur (ven). Refroidir 20-25 min à découvert avant de fermer."))))), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Repas saisis · ", meals.length), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-1 mt-2"
+  }, meals.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.faint,
+      padding: "10px 0"
+    }
+  }, "Rien de saisi. « Jour ON » remplit la journée type en un tap."), meals.map(m => /*#__PURE__*/React.createElement("div", {
+    key: m.id,
+    className: "flex items-center gap-2 rounded-lg px-3 py-2",
+    style: {
+      background: T.panel2
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex-1 min-w-0"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `500 13px ${T.sans}`,
+      color: T.bone,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap"
+    }
+  }, m.n, m.mult !== 1 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.faint,
+      fontFamily: T.mono
+    }
+  }, " ×", m.mult)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 10px ${T.mono}`,
+      color: T.faint
+    }
+  }, nf(m.kcal), " kcal · P", nf(m.p), " G", nf(m.c), " L", nf(m.f))), /*#__PURE__*/React.createElement("button", {
+    onClick: () => commit(meals.filter(x => x.id !== m.id)),
+    style: {
+      color: T.faint,
+      background: "none",
+      border: "none",
+      cursor: "pointer",
+      font: `400 16px ${T.mono}`
+    }
+  }, "×"))))), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Bibliothèque"), /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: () => setShowNew(!showNew)
+  }, showNew ? "Fermer" : "+ Aliment")), showNew && /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2 mb-3 p-3 rounded-lg",
+    style: {
+      background: T.panel2
+    }
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "Nom",
+    type: "text",
+    value: nfd.n,
+    onChange: v => setNfd({
+      ...nfd,
+      n: v
+    })
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2"
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "kcal",
+    value: nfd.kcal,
+    onChange: v => setNfd({
+      ...nfd,
+      kcal: v
+    })
+  }), /*#__PURE__*/React.createElement(Field, {
+    label: "Prot",
+    unit: "g",
+    value: nfd.p,
+    onChange: v => setNfd({
+      ...nfd,
+      p: v
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2"
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "Gluc",
+    unit: "g",
+    value: nfd.c,
+    onChange: v => setNfd({
+      ...nfd,
+      c: v
+    })
+  }), /*#__PURE__*/React.createElement(Field, {
+    label: "Lip",
+    unit: "g",
+    value: nfd.f,
+    onChange: v => setNfd({
+      ...nfd,
+      f: v
+    })
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Unité",
+    type: "text",
+    value: nfd.u,
+    onChange: v => setNfd({
+      ...nfd,
+      u: v
+    })
+  }), /*#__PURE__*/React.createElement(Btn, {
+    tone: "solid",
+    onClick: () => {
+      if (!nfd.n) return;
+      setLib([...lib, {
+        ...nfd,
+        id: uid(),
+        cat: "Perso",
+        kcal: nfd.kcal || 0,
+        p: nfd.p || 0,
+        c: nfd.c || 0,
+        f: nfd.f || 0
+      }]);
+      setNfd({
+        n: "",
+        kcal: null,
+        p: null,
+        c: null,
+        f: null,
+        u: "portion"
+      });
+      setShowNew(false);
+      setCat("Perso");
+    }
+  }, "Enregistrer")), /*#__PURE__*/React.createElement("input", {
+    value: q,
+    onChange: e => setQ(e.target.value),
+    placeholder: "Rechercher dans toute la bibliothèque…",
+    className: "w-full rounded-lg px-3 mb-2 outline-none",
+    style: {
+      height: 40,
+      background: T.panel2,
+      border: `1px solid ${T.line}`,
+      color: T.bone,
+      font: `400 14px ${T.mono}`
+    }
+  }), !q && /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mb-2 flex-wrap"
+  }, cats.map(c => /*#__PURE__*/React.createElement(Chip, {
+    key: c,
+    active: cat === c,
+    onClick: () => setCat(c)
+  }, c))), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-1",
+    style: {
+      maxHeight: 360,
+      overflowY: "auto"
+    }
+  }, filtered.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.faint,
+      padding: "8px 0"
+    }
+  }, "Aucun aliment ici."), filtered.map(it => /*#__PURE__*/React.createElement("div", {
+    key: it.id,
+    className: "flex items-center gap-2 rounded-lg px-3 py-2",
+    style: {
+      background: T.panel2
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex-1 min-w-0"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `500 13px ${T.sans}`,
+      color: T.bone
+    }
+  }, it.n), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 10px ${T.mono}`,
+      color: T.faint
+    }
+  }, it.kcal, " kcal · P", it.p, " G", it.c, " L", it.f, " / ", it.u)), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    step: "0.5",
+    placeholder: "×1",
+    value: qty[it.id] ?? "",
+    onChange: e => setQty({
+      ...qty,
+      [it.id]: e.target.value
+    }),
+    className: "rounded-md text-center outline-none",
+    style: {
+      width: 52,
+      height: 32,
+      background: T.ground,
+      border: `1px solid ${T.line}`,
+      color: T.bone,
+      font: `500 13px ${T.mono}`
+    }
+  }), /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "solid",
+    onClick: () => {
+      addItems([[it, Number(qty[it.id]) || 1]]);
+      setQty({
+        ...qty,
+        [it.id]: ""
+      });
+    }
+  }, "+"))))));
+}
+
+/* ============================ MUSCU ============================ */
+function Muscu({
+  workouts,
+  setWorkouts
+}) {
+  const [active, setActive] = useState(null);
+  const [place, setPlace] = useState("Salle");
+  const [timer, setTimer] = useState(null);
+  useEffect(() => {
+    if (timer === null || timer <= 0) return;
+    const id = setTimeout(() => setTimer(t => t - 1), 1000);
+    return () => clearTimeout(id);
+  }, [timer]);
+  const lastFor = (exName, exceptId) => {
+    const hist = workouts.filter(w => w.id !== exceptId).sort((a, b) => a.date < b.date ? 1 : -1);
+    for (const w of hist) {
+      const e = w.ex.find(x => x.n === exName);
+      if (e && e.sets.some(s => s.r > 0)) return {
+        date: w.date,
+        sets: e.sets.filter(s => s.r > 0)
+      };
+    }
+    return null;
+  };
+  const start = key => {
+    const p = PROGRAM[key];
+    const w = {
+      id: uid(),
+      date: todayKey(),
+      key,
+      label: p.label,
+      place: p.place,
+      cardio: !!p.cardio,
+      ex: p.ex.map(e => ({
+        n: e.n,
+        g: e.g,
+        rest: e.rest,
+        tempo: e.tempo,
+        note: e.note,
+        sub: e.sub,
+        target: `${e.s}×${e.r} @RPE ${e.rpe}`,
+        sets: Array.from({
+          length: e.s
+        }, () => ({
+          w: null,
+          r: null,
+          rpe: null
+        }))
+      }))
+    };
+    setWorkouts([...workouts, w]);
+    setActive(w.id);
+  };
+  const current = workouts.find(w => w.id === active);
+  const updSet = (i, j, patch) => setWorkouts(workouts.map(w => w.id !== active ? w : {
+    ...w,
+    ex: w.ex.map((e, ii) => ii !== i ? e : {
+      ...e,
+      sets: e.sets.map((s, jj) => jj === j ? {
+        ...s,
+        ...patch
+      } : s)
+    })
+  }));
+  const addSet = i => setWorkouts(workouts.map(w => w.id !== active ? w : {
+    ...w,
+    ex: w.ex.map((e, ii) => ii !== i ? e : {
+      ...e,
+      sets: [...e.sets, {
+        w: null,
+        r: null,
+        rpe: null
+      }]
+    })
+  }));
+  if (current) {
+    const done = sum(current.ex.map(e => e.sets.filter(s => s.r > 0).length));
+    const total = sum(current.ex.map(e => e.sets.length));
+    const tonnage = sum(current.ex.map(e => sum(e.sets.map(s => (s.w || 0) * (s.r || 0)))));
+    const cols = current.cardio ? ["MIN", "FC", "RPE"] : ["KG", "REPS", "RPE"];
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-3"
+    }, /*#__PURE__*/React.createElement(Panel, {
+      className: "p-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-start justify-between"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Eyebrow, {
+      color: T.amber
+    }, "Séance en cours"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `600 20px ${T.sans}`,
+        color: T.bone,
+        marginTop: 4
+      }
+    }, current.label), /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `400 11px ${T.mono}`,
+        color: T.faint,
+        marginTop: 2
+      }
+    }, done, "/", total, " séries", !current.cardio && ` · ${nf(tonnage)} kg de tonnage`)), /*#__PURE__*/React.createElement(Btn, {
+      size: "sm",
+      tone: "quiet",
+      onClick: () => {
+        setActive(null);
+        setTimer(null);
+      }
+    }, "Terminer")), /*#__PURE__*/React.createElement("div", {
+      className: "rounded-full mt-3",
+      style: {
+        height: 4,
+        background: T.line,
+        overflow: "hidden"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: `${total ? done / total * 100 : 0}%`,
+        height: "100%",
+        background: T.amber,
+        transition: "width .3s"
+      }
+    }))), timer !== null && /*#__PURE__*/React.createElement(Panel, {
+      className: "p-3 flex items-center justify-between",
+      style: {
+        borderColor: timer <= 0 ? T.moss : T.amber
+      }
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Eyebrow, {
+      color: timer <= 0 ? T.moss : T.amber
+    }, timer <= 0 ? "Repos terminé" : "Repos"), /*#__PURE__*/React.createElement(Num, {
+      v: `${Math.floor(Math.max(0, timer) / 60)}:${String(Math.max(0, timer) % 60).padStart(2, "0")}`,
+      size: 26,
+      color: timer <= 0 ? T.moss : T.amber
+    })), /*#__PURE__*/React.createElement(Btn, {
+      size: "sm",
+      tone: "quiet",
+      onClick: () => setTimer(null)
+    }, "Stop")), current.ex.map((e, i) => {
+      const prev = lastFor(e.n, current.id);
+      return /*#__PURE__*/React.createElement(Panel, {
+        key: i,
+        className: "p-4"
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "flex items-start justify-between mb-1 gap-2"
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "flex-1 min-w-0"
+      }, /*#__PURE__*/React.createElement("div", {
+        style: {
+          font: `600 14px ${T.sans}`,
+          color: T.bone
+        }
+      }, e.n), /*#__PURE__*/React.createElement("div", {
+        style: {
+          font: `400 10px ${T.mono}`,
+          color: T.amber,
+          letterSpacing: ".04em"
+        }
+      }, e.target, e.rest ? ` · repos ${e.rest}s` : "", e.tempo ? ` · tempo ${e.tempo}` : "", " · ", e.g)), e.rest > 0 && /*#__PURE__*/React.createElement(Btn, {
+        size: "sm",
+        tone: "quiet",
+        onClick: () => setTimer(e.rest)
+      }, "⏱")), e.note && /*#__PURE__*/React.createElement("div", {
+        style: {
+          font: `400 11px ${T.sans}`,
+          color: T.dim,
+          marginBottom: 4,
+          lineHeight: 1.4
+        }
+      }, "▸ ", e.note), e.sub && /*#__PURE__*/React.createElement("div", {
+        style: {
+          font: `400 10px ${T.sans}`,
+          color: T.faint,
+          marginBottom: 6,
+          lineHeight: 1.4
+        }
+      }, "↔ ", e.sub), prev && /*#__PURE__*/React.createElement("div", {
+        className: "rounded-md px-2 py-1 mb-2",
+        style: {
+          background: T.panel2,
+          font: `400 10px ${T.mono}`,
+          color: T.dim
+        }
+      }, shortFr(prev.date), " : ", prev.sets.map(s => `${s.w || 0}×${s.r}`).join(" · ")), /*#__PURE__*/React.createElement("div", {
+        className: "flex flex-col gap-1"
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "flex gap-1 items-center",
+        style: {
+          font: `500 9px ${T.mono}`,
+          color: T.faint,
+          letterSpacing: ".1em"
+        }
+      }, /*#__PURE__*/React.createElement("span", {
+        style: {
+          width: 18
+        }
+      }), cols.map(c => /*#__PURE__*/React.createElement("span", {
+        key: c,
+        className: "flex-1"
+      }, c))), e.sets.map((s, j) => /*#__PURE__*/React.createElement("div", {
+        key: j,
+        className: "flex gap-1 items-center"
+      }, /*#__PURE__*/React.createElement("span", {
+        style: {
+          width: 18,
+          font: `500 11px ${T.mono}`,
+          color: s.r > 0 ? T.amber : T.faint
+        }
+      }, j + 1), ["w", "r", "rpe"].map(f => /*#__PURE__*/React.createElement("input", {
+        key: f,
+        type: "number",
+        step: f === "w" ? "1.25" : f === "rpe" ? "0.5" : "1",
+        inputMode: "decimal",
+        value: s[f] ?? "",
+        onChange: ev => updSet(i, j, {
+          [f]: ev.target.value === "" ? null : Number(ev.target.value)
+        }),
+        className: "flex-1 min-w-0 rounded-md text-center outline-none",
+        style: {
+          height: 38,
+          background: s.r > 0 ? T.panel2 : T.ground,
+          border: `1px solid ${s.r > 0 ? T.amber + "55" : T.line}`,
+          color: T.bone,
+          font: `500 15px ${T.mono}`
+        }
+      })))), /*#__PURE__*/React.createElement(Btn, {
+        size: "sm",
+        tone: "quiet",
+        onClick: () => addSet(i),
+        style: {
+          marginTop: 4
+        }
+      }, "+ série")));
+    }));
+  }
+  const todaySession = PLAN_WEEK.find(p => p.d === new Date().getDay());
+  const recent = [...workouts].sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 12);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-3"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: T.amber
+  }, "Aujourd'hui · ", todaySession?.n), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `600 17px ${T.sans}`,
+      color: T.bone,
+      marginTop: 4
+    }
+  }, todaySession?.s), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-1 mt-3 flex-wrap"
+  }, PLAN_WEEK.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p.n,
+    className: "rounded-md px-2 py-1 text-center",
+    style: {
+      background: p.d === new Date().getDay() ? T.amber : T.panel2,
+      color: p.d === new Date().getDay() ? "#1A1508" : T.faint,
+      font: `600 10px ${T.mono}`,
+      minWidth: 34
+    }
+  }, p.n)))), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Démarrer une séance"), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mt-3 mb-3 flex-wrap"
+  }, PLACES.map(p => /*#__PURE__*/React.createElement(Chip, {
+    key: p,
+    active: place === p,
+    onClick: () => setPlace(p)
+  }, p))), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2"
+  }, SESSION_KEYS.filter(k => PROGRAM[k].place === place).map(k => {
+    const p = PROGRAM[k];
+    const last = workouts.filter(w => w.key === k).sort((a, b) => a.date < b.date ? 1 : -1)[0];
+    return /*#__PURE__*/React.createElement("button", {
+      key: k,
+      onClick: () => start(k),
+      className: "rounded-lg px-3 py-3 text-left",
+      style: {
+        background: T.panel2,
+        border: `1px solid ${T.line}`,
+        cursor: "pointer"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center justify-between gap-2"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "min-w-0"
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `600 14px ${T.sans}`,
+        color: T.bone
+      }
+    }, p.label), /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `400 10px ${T.mono}`,
+        color: T.faint,
+        marginTop: 2
+      }
+    }, p.ex.length, " exercices · ", sum(p.ex.map(e => e.s)), " séries · ", p.tag)), /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `400 10px ${T.mono}`,
+        color: last ? T.amber : T.faint,
+        whiteSpace: "nowrap"
+      }
+    }, last ? `il y a ${daysBetween(last.date, todayKey())} j` : "jamais")));
+  }))), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Historique"), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-1 mt-2"
+  }, recent.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.faint,
+      padding: "8px 0"
+    }
+  }, "Aucune séance enregistrée."), recent.map(w => {
+    const ton = sum(w.ex.map(e => sum(e.sets.map(s => (s.w || 0) * (s.r || 0)))));
+    const sets = sum(w.ex.map(e => e.sets.filter(s => s.r > 0).length));
+    return /*#__PURE__*/React.createElement("div", {
+      key: w.id,
+      className: "flex items-center gap-2 rounded-lg px-3 py-2",
+      style: {
+        background: T.panel2
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex-1 min-w-0"
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `500 13px ${T.sans}`,
+        color: T.bone
+      }
+    }, w.label), /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `400 10px ${T.mono}`,
+        color: T.faint
+      }
+    }, shortFr(w.date), " · ", sets, " séries", !w.cardio && ` · ${nf(ton)} kg`)), /*#__PURE__*/React.createElement(Btn, {
+      size: "sm",
+      tone: "quiet",
+      onClick: () => setActive(w.id)
+    }, "Ouvrir"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setWorkouts(workouts.filter(x => x.id !== w.id)),
+      style: {
+        color: T.faint,
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        font: `400 15px ${T.mono}`
+      }
+    }, "×"));
+  }))));
+}
+
+/* ============================ MESURES ============================ */
+function Mesures({
+  measures,
+  setMeasures,
+  days
+}) {
+  const [draft, setDraft] = useState({
+    date: todayKey()
+  });
+  const sorted = [...measures].sort((a, b) => a.date < b.date ? 1 : -1);
+  const last = sorted[0],
+    prev = sorted[1];
+  const delta = k => last && prev && last[k] && prev[k] ? last[k] - prev[k] : null;
+  const ratio = m => m && m.brasD && m.taille ? m.brasD / m.taille : null;
+  const lastPhoto = Object.entries(days).filter(([, v]) => v.tags?.photo).map(([d]) => d).sort().pop();
+  const photoAge = lastPhoto ? daysBetween(lastPhoto, todayKey()) : null;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-3"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: T.amber
+  }, "Bras ÷ taille"), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-end gap-4 mt-2"
+  }, /*#__PURE__*/React.createElement(Num, {
+    v: ratio(last) ? ratio(last) * 100 : null,
+    unit: "%",
+    size: 34,
+    color: T.amber,
+    d: 1
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.dim,
+      lineHeight: 1.45,
+      flex: 1
+    }
+  }, "S'il monte pendant que le poids descend, tu perds du gras en gardant du muscle. S'il baisse, c'est le signe « plus sec mais plus petit » — remonte les kcal.")), ratio(last) && ratio(prev) && /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `500 11px ${T.mono}`,
+      color: ratio(last) >= ratio(prev) ? T.moss : T.brick,
+      marginTop: 8
+    }
+  }, ratio(last) >= ratio(prev) ? "▲" : "▼", " ", nf(Math.abs((ratio(last) - ratio(prev)) * 100), 2), " pt vs prise précédente")), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4",
+    style: {
+      borderColor: photoAge !== null && photoAge > 14 ? T.brick + "66" : T.line
+    }
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: photoAge !== null && photoAge > 14 ? T.brick : T.faint
+  }, "Photos"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.dim,
+      marginTop: 6,
+      lineHeight: 1.45
+    }
+  }, photoAge === null ? "Aucune photo cochée. Toutes les 2 semaines, matin à jeun, même lumière, face/dos/profil." : photoAge > 14 ? `Dernière série il y a ${photoAge} jours. C'est ton meilleur indicateur de composition sans impédancemètre.` : `Dernière série il y a ${photoAge} jours. À jour.`)), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Nouvelle prise"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.faint,
+      margin: "6px 0 10px"
+    }
+  }, "Matin, à jeun, avant l'entraînement. Toutes les 2 semaines."), /*#__PURE__*/React.createElement(Field, {
+    label: "Date",
+    type: "text",
+    value: draft.date,
+    onChange: v => setDraft({
+      ...draft,
+      date: v
+    })
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-2 gap-2 mt-2"
+  }, MEASURE_FIELDS.map(f => /*#__PURE__*/React.createElement(Field, {
+    key: f.k,
+    label: f.n,
+    unit: "cm",
+    value: draft[f.k],
+    onChange: v => setDraft({
+      ...draft,
+      [f.k]: v
+    }),
+    step: "0.5"
+  }))), /*#__PURE__*/React.createElement(Btn, {
+    tone: "solid",
+    style: {
+      marginTop: 12,
+      width: "100%"
+    },
+    onClick: () => {
+      setMeasures([...measures.filter(m => m.date !== draft.date), {
+        ...draft,
+        id: uid()
+      }]);
+      setDraft({
+        date: todayKey()
+      });
+    }
+  }, "Enregistrer")), last && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Dernière prise · ", shortFr(last.date)), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-2 gap-x-4 gap-y-2 mt-3"
+  }, MEASURE_FIELDS.map(f => {
+    const dl = delta(f.k);
+    const good = f.k === "taille" || f.k === "hanches" ? dl < 0 : dl > 0;
+    return /*#__PURE__*/React.createElement("div", {
+      key: f.k,
+      className: "flex items-baseline justify-between",
+      style: {
+        borderBottom: `1px solid ${T.line}`,
+        paddingBottom: 4
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        font: `400 12px ${T.sans}`,
+        color: T.dim
+      }
+    }, f.n), /*#__PURE__*/React.createElement("span", {
+      style: {
+        font: `500 14px ${T.mono}`,
+        color: T.bone
+      }
+    }, last[f.k] ? nf(last[f.k], 1) : "—", dl !== null && dl !== 0 && /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: good ? T.moss : T.brick,
+        fontSize: 10,
+        marginLeft: 4
+      }
+    }, dl > 0 ? "+" : "", nf(dl, 1))));
+  }))), sorted.length > 1 && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Évolution"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 220,
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement(ResponsiveContainer, null, /*#__PURE__*/React.createElement(LineChart, {
+    data: [...sorted].reverse().map(m => ({
+      d: shortFr(m.date),
+      Bras: m.brasD,
+      Taille: m.taille,
+      Épaules: m.epaules
+    }))
+  }, /*#__PURE__*/React.createElement(CartesianGrid, {
+    stroke: T.line,
+    strokeDasharray: "2 4",
+    vertical: false
+  }), /*#__PURE__*/React.createElement(XAxis, {
+    dataKey: "d",
+    tick: {
+      fill: T.faint,
+      fontSize: 10,
+      fontFamily: T.mono
+    },
+    stroke: T.line
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    tick: {
+      fill: T.faint,
+      fontSize: 10,
+      fontFamily: T.mono
+    },
+    stroke: T.line,
+    width: 34,
+    domain: ["auto", "auto"]
+  }), /*#__PURE__*/React.createElement(Tooltip, {
+    contentStyle: {
+      background: T.panel2,
+      border: `1px solid ${T.line}`,
+      borderRadius: 8,
+      fontFamily: T.mono,
+      fontSize: 12
+    },
+    labelStyle: {
+      color: T.dim
+    }
+  }), /*#__PURE__*/React.createElement(Legend, {
+    wrapperStyle: {
+      fontFamily: T.sans,
+      fontSize: 11
+    }
+  }), /*#__PURE__*/React.createElement(Line, {
+    dataKey: "Bras",
+    stroke: T.amber,
+    strokeWidth: 2,
+    dot: {
+      r: 2
+    },
+    connectNulls: true
+  }), /*#__PURE__*/React.createElement(Line, {
+    dataKey: "Taille",
+    stroke: T.brick,
+    strokeWidth: 2,
+    dot: {
+      r: 2
+    },
+    connectNulls: true
+  }), /*#__PURE__*/React.createElement(Line, {
+    dataKey: "Épaules",
+    stroke: T.peri,
+    strokeWidth: 2,
+    dot: {
+      r: 2
+    },
+    connectNulls: true
+  }))))), sorted.length > 0 && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Historique"), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-1 mt-2"
+  }, sorted.map(m => /*#__PURE__*/React.createElement("div", {
+    key: m.id || m.date,
+    className: "flex items-center gap-2 rounded-lg px-3 py-2",
+    style: {
+      background: T.panel2
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `500 12px ${T.mono}`,
+      color: T.bone,
+      flex: 1
+    }
+  }, shortFr(m.date)), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `400 11px ${T.mono}`,
+      color: T.faint
+    }
+  }, "bras ", nf(m.brasD, 1), " · taille ", nf(m.taille, 1)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setMeasures(measures.filter(x => x.date !== m.date)),
+    style: {
+      color: T.faint,
+      background: "none",
+      border: "none",
+      cursor: "pointer",
+      font: `400 15px ${T.mono}`
+    }
+  }, "×"))))));
+}
+
+/* ============================ BILAN ============================ */
+function Bilan({
+  days,
+  engine,
+  workouts,
+  settings,
+  setSettings,
+  backup,
+  onRestore,
+  store
+}) {
+  const confColor = {
+    insuffisant: T.faint,
+    faible: T.brick,
+    moyenne: T.amber,
+    haute: T.moss
+  }[engine.confidence];
+  const [showBackup, setShowBackup] = useState(false);
+  const [backupText, setBackupText] = useState("");
+  const deloadRef = settings.lastDeload || settings.startDate || "2026-07-27";
+  const deloadWeeks = Math.max(0, Math.floor(daysBetween(deloadRef, todayKey()) / 7));
+  const verdict = useMemo(() => {
+    const r = engine.ratePct;
+    if (engine.isMaint) {
+      if (r === null) return {
+        t: "Maintenance",
+        c: T.peri,
+        msg: "Objectif : ne pas prendre, pas perdre. Le plancher protéique reste à 200 g."
+      };
+      if (r > 0.3) return {
+        t: "Dérive haute",
+        c: T.brick,
+        msg: "Tu prends. Reviens à la journée type et compte approximativement le week-end."
+      };
+      if (r < -0.4) return {
+        t: "Tu es encore en déficit",
+        c: T.amber,
+        msg: "Une pause à maintenance sert à consolider : remonte les glucides de +40 g."
+      };
+      return {
+        t: "Maintenance tenue",
+        c: T.moss,
+        msg: "Poids stable. C'est exactement le but d'un diet break — tu ne perds pas de temps, tu consolides."
+      };
+    }
+    if (r === null) return {
+      t: "Calibrage en cours",
+      c: T.faint,
+      msg: `Il faut ~14 j de saisie kcal + 4 pesées pour estimer ta dépense réelle. Tu en es à ${engine.kcalDaysCount} j. En attendant, la cible est celle du plan : ${engine.targetKcal} kcal.`
+    };
+    if (r > 0.15) return {
+      t: "Prise de poids",
+      c: T.brick,
+      msg: "Tu es en surplus. Vérifie d'abord les jours non saisis (week-end), puis baisse les glucides de 40 g."
+    };
+    if (r > -0.25) return {
+      t: "Plateau",
+      c: T.brick,
+      msg: "Perte trop lente. −150 à −200 kcal via les glucides, OU +1 500-2 000 pas/jour. Le cardio est le dernier recours, pas le premier."
+    };
+    if (r >= -0.7) return {
+      t: "Dans la cible",
+      c: T.moss,
+      msg: "0,4-0,6 %/sem, la zone où le muscle est préservé. Ne touche à rien tant que tes charges tiennent."
+    };
+    return {
+      t: "Trop rapide",
+      c: T.brick,
+      msg: "Au-delà de 0,7 %/sem, tu attaques le muscle. Remonte de 150-200 kcal (glucides) — surtout si la force baisse."
+    };
+  }, [engine]);
+  const carbDial = useMemo(() => {
+    const r = engine.ratePct;
+    if (r === null || engine.isMaint) return null;
+    if (r > -0.25) return {
+      g: -40,
+      txt: "Baisse les glucides de 40 g (−160 kcal). Protéines et lipides ne bougent pas."
+    };
+    if (r < -0.7) return {
+      g: +40,
+      txt: "Monte les glucides de 40 g (+160 kcal). Protéines et lipides ne bougent pas."
+    };
+    return {
+      g: 0,
+      txt: "Aucun ajustement. La molette glucides reste où elle est."
+    };
+  }, [engine]);
+  const alerts = useMemo(() => {
+    const out = [];
+    const s7 = rolling(days, 7, "sleep"),
+      st7 = rolling(days, 7, "steps"),
+      p7 = rolling(days, 7, "prot");
+    if (s7 !== null && s7 < 7.5) out.push({
+      t: `Sommeil : ${nf(s7, 1)} h/nuit sur 7 j`,
+      d: "Sous ton besoin de 7 h 30. En déficit, le manque de sommeil déplace la perte vers le muscle et augmente la faim. Vérifie l'heure de ta caféine avant tout le reste.",
+      c: T.brick
+    });
+    if (st7 !== null && st7 < 8000) out.push({
+      t: `Pas : ${nf(st7)} /j`,
+      d: "Cible 8-10 k. C'est le levier de dépense le moins coûteux en récupération.",
+      c: T.amber
+    });
+    if (p7 !== null && p7 < engine.protG * 0.9) out.push({
+      t: `Protéines : ${nf(p7)} g/j`,
+      d: `Plancher ${engine.protG} g. C'est la variable n° 1 de préservation musculaire — non négociable, y compris le week-end.`,
+      c: T.brick
+    });
+
+    // caféine tardive
+    const cafLate = Object.entries(days).filter(([d, v]) => d >= addDays(todayKey(), -6) && v.cafHour > 15).length;
+    if (cafLate >= 2) out.push({
+      t: `Caféine après 15 h : ${cafLate} jours cette semaine`,
+      d: "Demi-vie 5-6 h. Déplace à 13-14 h : tu gardes ~55 % d'effet sur la séance et tu récupères ton endormissement.",
+      c: T.brick
+    });
+
+    // créatine
+    const creaDays = Object.entries(days).filter(([d, v]) => d >= addDays(todayKey(), -6) && v.supps?.crea).length;
+    if (creaDays < 5 && Object.keys(days).length > 7) out.push({
+      t: `Créatine : ${creaDays}/7 jours`,
+      d: "5 g tous les jours, y compris les jours off. C'est le complément le mieux prouvé de ta stack.",
+      c: T.amber
+    });
+    const lastW = [...workouts].sort((a, b) => a.date < b.date ? 1 : -1)[0];
+    if (lastW && daysBetween(lastW.date, todayKey()) > 5) out.push({
+      t: `Dernière séance il y a ${daysBetween(lastW.date, todayKey())} j`,
+      d: "Maintenir l'intensité de charge est le meilleur protecteur de masse musculaire en déficit.",
+      c: T.amber
+    });
+
+    // force en baisse 2 séances d'affilée sur un lift clé → indicateur n° 1 de perte musculaire
+    const liftSeries = {};
+    [...workouts].filter(w => !w.cardio).sort((a, b) => a.date < b.date ? -1 : 1).forEach(w => {
+      w.ex.forEach(e => {
+        if (!KEY_LIFTS.includes(e.n)) return;
+        const best = Math.max(0, ...e.sets.filter(s => s.w > 0 && s.r > 0).map(s => e1rm(s.w, s.r)));
+        if (best > 0) (liftSeries[e.n] = liftSeries[e.n] || []).push(best);
+      });
+    });
+    Object.entries(liftSeries).forEach(([n, v]) => {
+      if (v.length >= 3 && v[v.length - 1] < v[v.length - 2] && v[v.length - 2] < v[v.length - 3]) {
+        out.push({
+          t: `Force en baisse 2 séances : ${LIFT_SHORT[n] || n}`,
+          d: engine.ratePct !== null && engine.ratePct < -0.7 ? "Combinée à une perte > 0,7 %/sem : déficit trop agressif. Remonte les kcal de 150-200 (glucides), ce n'est pas un problème d'entraînement." : "Vérifie sommeil et kcal avant de toucher au programme. Si ça persiste séance suivante : deload.",
+          c: T.brick
+        });
+      }
+    });
+    return out;
+  }, [days, engine, workouts]);
+  const weightChart = useMemo(() => {
+    const start = addDays(todayKey(), -89);
+    return engine.trend.filter(t => t.d >= start).map(t => ({
+      d: shortFr(t.d),
+      Pesée: r1(t.raw),
+      Tendance: Number(t.trend.toFixed(2))
+    }));
+  }, [engine.trend]);
+  const kcalChart = useMemo(() => {
+    const start = addDays(todayKey(), -27);
+    return Object.entries(days).filter(([d, v]) => d >= start && v.kcal > 0).sort().map(([d, v]) => ({
+      d: shortFr(d),
+      kcal: v.kcal,
+      Protéines: v.prot || 0
+    }));
+  }, [days]);
+  const sleepChart = useMemo(() => {
+    const start = addDays(todayKey(), -27);
+    return Object.entries(days).filter(([d, v]) => d >= start && (v.sleep > 0 || v.steps > 0)).sort().map(([d, v]) => ({
+      d: shortFr(d),
+      Sommeil: v.sleep || null,
+      "Pas (k)": v.steps ? r1(v.steps / 1000) : null
+    }));
+  }, [days]);
+  const volumeChart = useMemo(() => {
+    const byGroup = {};
+    const start = addDays(todayKey(), -6);
+    workouts.filter(w => w.date >= start && !w.cardio).forEach(w => w.ex.forEach(e => {
+      const n = e.sets.filter(s => s.r > 0).length;
+      if (n) byGroup[e.g] = (byGroup[e.g] || 0) + n;
+    }));
+    return Object.keys(VOL_TARGETS).map(g => ({
+      g,
+      Séries: byGroup[g] || 0,
+      Cible: VOL_TARGETS[g]
+    }));
+  }, [workouts]);
+  const forceChart = useMemo(() => {
+    const rows = [];
+    [...workouts].filter(w => !w.cardio).sort((a, b) => a.date < b.date ? -1 : 1).forEach(w => {
+      const row = {
+        d: shortFr(w.date)
+      };
+      let has = false;
+      w.ex.forEach(e => {
+        if (!KEY_LIFTS.includes(e.n)) return;
+        const vals = e.sets.filter(s => s.w > 0 && s.r > 0).map(s => e1rm(s.w, s.r));
+        if (vals.length) {
+          row[LIFT_SHORT[e.n]] = Math.round(Math.max(...vals));
+          has = true;
+        }
+      });
+      if (has) rows.push(row);
+    });
+    return rows;
+  }, [workouts]);
+  const axis = {
+    tick: {
+      fill: T.faint,
+      fontSize: 10,
+      fontFamily: T.mono
+    },
+    stroke: T.line
+  };
+  const tip = {
+    contentStyle: {
+      background: T.panel2,
+      border: `1px solid ${T.line}`,
+      borderRadius: 8,
+      fontFamily: T.mono,
+      fontSize: 12
+    },
+    labelStyle: {
+      color: T.dim
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-3"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4",
+    style: {
+      borderColor: verdict.c + "66"
+    }
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: verdict.c
+  }, "Verdict"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `700 26px ${T.sans}`,
+      color: verdict.c,
+      marginTop: 4
+    }
+  }, verdict.t), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-6 mt-3 mb-3"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Eyebrow, null, "Rythme"), /*#__PURE__*/React.createElement(Num, {
+    v: engine.ratePct,
+    unit: "%/sem",
+    size: 26,
+    d: 2
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Eyebrow, null, "Soit"), /*#__PURE__*/React.createElement(Num, {
+    v: engine.ratePerWeek !== null ? engine.ratePerWeek * 1000 : null,
+    unit: "g/sem",
+    size: 26,
+    color: T.dim
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.dim,
+      lineHeight: 1.5
+    }
+  }, verdict.msg), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-lg mt-3",
+    style: {
+      height: 8,
+      background: T.panel2,
+      position: "relative",
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      left: "37%",
+      width: "13%",
+      height: "100%",
+      background: T.moss + "55"
+    }
+  }), engine.ratePct !== null && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      left: `${Math.max(0, Math.min(98, (-engine.ratePct + 0.4) / 1.8 * 100))}%`,
+      width: 3,
+      height: "100%",
+      background: verdict.c
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-between mt-1",
+    style: {
+      font: `400 9px ${T.mono}`,
+      color: T.faint
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "+0,4"), /*#__PURE__*/React.createElement("span", null, "cible 0,4-0,6"), /*#__PURE__*/React.createElement("span", null, "−1,4 %/sem"))), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Phase"), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mt-2"
+  }, /*#__PURE__*/React.createElement(Chip, {
+    active: !engine.isMaint,
+    onClick: () => setSettings({
+      ...settings,
+      mode: "deficit"
+    })
+  }, "Déficit · 6-10 sem"), /*#__PURE__*/React.createElement(Chip, {
+    active: engine.isMaint,
+    color: T.peri,
+    onClick: () => setSettings({
+      ...settings,
+      mode: "maintenance"
+    })
+  }, "Maintenance · 1-2 sem")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.faint,
+      marginTop: 10,
+      lineHeight: 1.45
+    }
+  }, "Voyage, vacances, fatigue ou motivation basse → bascule en maintenance. Ce n'est pas du temps perdu : ça atténue l'adaptation métabolique et ça protège l'adhérence.")), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4",
+    style: {
+      borderColor: deloadWeeks >= 6 ? T.peri + "77" : T.line
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-baseline justify-between"
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: deloadWeeks >= 6 ? T.peri : T.faint
+  }, "Cycle de charge"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `500 11px ${T.mono}`,
+      color: T.dim
+    }
+  }, deloadWeeks, " sem depuis ", settings.lastDeload ? "le dernier deload" : "le départ")), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-full my-2",
+    style: {
+      height: 6,
+      background: T.panel2,
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: `${Math.min(100, deloadWeeks / 8 * 100)}%`,
+      height: "100%",
+      background: deloadWeeks >= 6 ? T.peri : T.line
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.dim,
+      lineHeight: 1.45
+    }
+  }, deloadWeeks >= 6 ? "Fenêtre 6-8 semaines atteinte : une semaine à moitié des séries, charges −10 %, RPE plafonné à 6-7. Tu ne perds rien en 5-7 jours de charge réduite." : "Deload systématique toutes les 6-8 semaines, ou avant si perf en baisse 2 séances + sommeil dégradé."), deloadWeeks >= 5 && /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    style: {
+      marginTop: 10
+    },
+    onClick: () => setSettings({
+      ...settings,
+      lastDeload: todayKey()
+    })
+  }, "Deload effectué cette semaine")), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-2 gap-3"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Dépense estimée"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-2"
+  }, /*#__PURE__*/React.createElement(Num, {
+    v: engine.tdee,
+    unit: "kcal",
+    size: 26,
+    color: T.amber
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 10px ${T.mono}`,
+      color: confColor,
+      marginTop: 6,
+      textTransform: "uppercase",
+      letterSpacing: ".08em"
+    }
+  }, "fiabilité ", engine.confidence)), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Poids tendance"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-2"
+  }, /*#__PURE__*/React.createElement(Num, {
+    v: engine.currentTrend,
+    unit: "kg",
+    size: 26,
+    d: 2
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 10px ${T.mono}`,
+      color: T.faint,
+      marginTop: 6
+    }
+  }, "brut ", nf(engine.lastWeight, 1), " kg"))), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-baseline justify-between"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Cibles du jour"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `500 10px ${T.mono}`,
+      color: engine.calibrated ? T.moss : T.faint,
+      letterSpacing: ".08em"
+    }
+  }, engine.calibrated ? "CALIBRÉ SUR TES DONNÉES" : "PLAN DE DÉPART")), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-4 gap-2 mt-3"
+  }, [["kcal", engine.targetKcal, T.amber], ["prot", engine.protG, T.peri], ["gluc", engine.carbG, T.bone], ["lip", engine.fatG, T.moss]].map(([l, v, c]) => /*#__PURE__*/React.createElement("div", {
+    key: l,
+    className: "rounded-lg p-2 text-center",
+    style: {
+      background: T.panel2
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `600 17px ${T.mono}`,
+      color: c
+    }
+  }, v ?? "—"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `500 9px ${T.mono}`,
+      color: T.faint,
+      letterSpacing: ".1em",
+      textTransform: "uppercase"
+    }
+  }, l)))), carbDial && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-lg p-3 mt-3",
+    style: {
+      background: T.panel2,
+      borderLeft: `2px solid ${carbDial.g === 0 ? T.moss : T.amber}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `500 11px ${T.mono}`,
+      color: carbDial.g === 0 ? T.moss : T.amber,
+      letterSpacing: ".08em"
+    }
+  }, "MOLETTE GLUCIDES ", carbDial.g > 0 ? `+${carbDial.g} g` : carbDial.g < 0 ? `${carbDial.g} g` : "= 0"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.dim,
+      marginTop: 4,
+      lineHeight: 1.45
+    }
+  }, carbDial.txt)), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mt-3"
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "Perte cible",
+    unit: "%/sem",
+    value: settings.targetRatePct,
+    onChange: v => setSettings({
+      ...settings,
+      targetRatePct: v
+    }),
+    step: "0.05"
+  }), /*#__PURE__*/React.createElement(Field, {
+    label: "Prot",
+    unit: "g/kg",
+    value: settings.protPerKg,
+    onChange: v => setSettings({
+      ...settings,
+      protPerKg: v
+    }),
+    step: "0.05"
+  }), /*#__PURE__*/React.createElement(Field, {
+    label: "Lip",
+    unit: "g/kg",
+    value: settings.fatPerKg,
+    onChange: v => setSettings({
+      ...settings,
+      fatPerKg: v
+    }),
+    step: "0.01"
+  }))), alerts.length > 0 && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Signaux"), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2 mt-2"
+  }, alerts.map((a, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "rounded-lg p-3",
+    style: {
+      background: T.panel2,
+      borderLeft: `2px solid ${a.c}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `600 13px ${T.sans}`,
+      color: a.c
+    }
+  }, a.t), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.dim,
+      marginTop: 3,
+      lineHeight: 1.45
+    }
+  }, a.d))))), weightChart.length > 1 && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Poids · 90 jours"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 220,
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement(ResponsiveContainer, null, /*#__PURE__*/React.createElement(ComposedChart, {
+    data: weightChart
+  }, /*#__PURE__*/React.createElement(CartesianGrid, {
+    stroke: T.line,
+    strokeDasharray: "2 4",
+    vertical: false
+  }), /*#__PURE__*/React.createElement(XAxis, {
+    dataKey: "d",
+    ...axis,
+    minTickGap: 28
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    ...axis,
+    width: 40,
+    domain: ["dataMin - 0.5", "dataMax + 0.5"]
+  }), /*#__PURE__*/React.createElement(Tooltip, tip), /*#__PURE__*/React.createElement(Line, {
+    dataKey: "Pesée",
+    stroke: T.peri,
+    strokeWidth: 0,
+    dot: {
+      r: 2.5,
+      fill: T.peri
+    }
+  }), /*#__PURE__*/React.createElement(Line, {
+    dataKey: "Tendance",
+    stroke: T.amber,
+    strokeWidth: 2.5,
+    dot: false
+  }))))), kcalChart.length > 0 && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Apports · 28 jours"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 200,
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement(ResponsiveContainer, null, /*#__PURE__*/React.createElement(ComposedChart, {
+    data: kcalChart
+  }, /*#__PURE__*/React.createElement(CartesianGrid, {
+    stroke: T.line,
+    strokeDasharray: "2 4",
+    vertical: false
+  }), /*#__PURE__*/React.createElement(XAxis, {
+    dataKey: "d",
+    ...axis,
+    minTickGap: 20
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    ...axis,
+    width: 40
+  }), /*#__PURE__*/React.createElement(Tooltip, tip), /*#__PURE__*/React.createElement(ReferenceLine, {
+    y: engine.targetKcal,
+    stroke: T.amber,
+    strokeDasharray: "4 4"
+  }), engine.tdee && /*#__PURE__*/React.createElement(ReferenceLine, {
+    y: engine.tdee,
+    stroke: T.moss,
+    strokeDasharray: "2 6"
+  }), /*#__PURE__*/React.createElement(Bar, {
+    dataKey: "kcal",
+    fill: T.amber,
+    radius: [3, 3, 0, 0],
+    opacity: 0.7
+  }), /*#__PURE__*/React.createElement(Line, {
+    dataKey: "Protéines",
+    stroke: T.peri,
+    strokeWidth: 2,
+    dot: false
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 10px ${T.mono}`,
+      color: T.faint,
+      marginTop: 4
+    }
+  }, "─ ─ cible · ┈ dépense estimée")), sleepChart.length > 0 && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Sommeil et pas · 28 jours"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 200,
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement(ResponsiveContainer, null, /*#__PURE__*/React.createElement(ComposedChart, {
+    data: sleepChart
+  }, /*#__PURE__*/React.createElement(CartesianGrid, {
+    stroke: T.line,
+    strokeDasharray: "2 4",
+    vertical: false
+  }), /*#__PURE__*/React.createElement(XAxis, {
+    dataKey: "d",
+    ...axis,
+    minTickGap: 20
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    ...axis,
+    width: 30
+  }), /*#__PURE__*/React.createElement(Tooltip, tip), /*#__PURE__*/React.createElement(ReferenceLine, {
+    y: 7.5,
+    stroke: T.brick,
+    strokeDasharray: "4 4"
+  }), /*#__PURE__*/React.createElement(Bar, {
+    dataKey: "Sommeil",
+    fill: T.peri,
+    radius: [3, 3, 0, 0],
+    opacity: 0.7
+  }), /*#__PURE__*/React.createElement(Line, {
+    dataKey: "Pas (k)",
+    stroke: T.moss,
+    strokeWidth: 2,
+    dot: false,
+    connectNulls: true
+  }))))), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Séries dures · 7 derniers jours vs cible hebdo"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 250,
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement(ResponsiveContainer, null, /*#__PURE__*/React.createElement(BarChart, {
+    data: volumeChart,
+    layout: "vertical",
+    margin: {
+      left: 6
+    }
+  }, /*#__PURE__*/React.createElement(CartesianGrid, {
+    stroke: T.line,
+    strokeDasharray: "2 4",
+    horizontal: false
+  }), /*#__PURE__*/React.createElement(XAxis, {
+    type: "number",
+    ...axis
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    type: "category",
+    dataKey: "g",
+    ...axis,
+    width: 76
+  }), /*#__PURE__*/React.createElement(Tooltip, tip), /*#__PURE__*/React.createElement(Bar, {
+    dataKey: "Cible",
+    fill: T.line,
+    radius: [0, 3, 3, 0]
+  }), /*#__PURE__*/React.createElement(Bar, {
+    dataKey: "Séries",
+    fill: T.amber,
+    radius: [0, 3, 3, 0]
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.faint,
+      marginTop: 6,
+      lineHeight: 1.45
+    }
+  }, "En sèche on vise le maintien, pas la surcharge. Ajouter du volume quand la récupération est réduite est un mauvais calcul.")), forceChart.length > 1 && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: T.amber
+  }, "Force · e1RM estimé sur les lifts clés"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 220,
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement(ResponsiveContainer, null, /*#__PURE__*/React.createElement(LineChart, {
+    data: forceChart
+  }, /*#__PURE__*/React.createElement(CartesianGrid, {
+    stroke: T.line,
+    strokeDasharray: "2 4",
+    vertical: false
+  }), /*#__PURE__*/React.createElement(XAxis, {
+    dataKey: "d",
+    ...axis,
+    minTickGap: 24
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    ...axis,
+    width: 36,
+    domain: ["auto", "auto"]
+  }), /*#__PURE__*/React.createElement(Tooltip, tip), /*#__PURE__*/React.createElement(Legend, {
+    wrapperStyle: {
+      fontFamily: T.sans,
+      fontSize: 11
+    }
+  }), Object.values(LIFT_SHORT).map((short, i) => /*#__PURE__*/React.createElement(Line, {
+    key: short,
+    dataKey: short,
+    stroke: [T.amber, T.peri, T.moss, T.brick][i],
+    strokeWidth: 2,
+    dot: {
+      r: 2
+    },
+    connectNulls: true
+  }))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.faint,
+      marginTop: 6,
+      lineHeight: 1.45
+    }
+  }, "Formule d'Epley sur ta meilleure série. Ces courbes qui tiennent pendant que le poids descend = tu perds du gras, pas du muscle. C'est ton détecteur n° 1. (Tractions : charge additionnelle uniquement.)")), /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: store && store.probe && !store.probe.ok ? T.brick : T.faint
+  }, "Stockage et sauvegarde"), /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: () => setShowBackup(!showBackup)
+  }, showBackup ? "Fermer" : "Ouvrir")), store && /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-3 gap-2 mt-3"
+  }, [["Local", store.probe ? store.probe.ok ? "OK" : "KO" : "…", store.probe && store.probe.ok ? T.moss : T.brick], ["Sessions", store.boots ?? "…", store.boots > 1 ? T.moss : T.amber], ["Dernière écriture", store.last ? new Date(store.last).toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit"
+  }) : "—", T.dim]].map(([l, v, c]) => /*#__PURE__*/React.createElement("div", {
+    key: l,
+    className: "rounded-lg p-2 text-center",
+    style: {
+      background: T.panel2
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `600 15px ${T.mono}`,
+      color: c
+    }
+  }, v), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `500 9px ${T.mono}`,
+      color: T.faint,
+      letterSpacing: ".08em",
+      textTransform: "uppercase"
+    }
+  }, l)))), store && store.boots === 1 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.amber,
+      marginTop: 8,
+      lineHeight: 1.45
+    }
+  }, "Compteur à 1 : c'est ta première ouverture depuis ce correctif. Ferme puis rouvre l'app — s'il passe à 2, la persistance fonctionne. S'il reste à 1, elle est cassée et l'export ci-dessous devient ta seule sauvegarde."), showBackup && /*#__PURE__*/React.createElement("div", {
+    className: "mt-3 flex flex-col gap-2"
+  }, /*#__PURE__*/React.createElement("textarea", {
+    value: backupText,
+    onChange: e => setBackupText(e.target.value),
+    rows: 4,
+    placeholder: "Exporte ici, ou colle une sauvegarde puis importe.",
+    className: "w-full rounded-lg p-2 outline-none",
+    style: {
+      background: T.panel2,
+      border: `1px solid ${T.line}`,
+      color: T.bone,
+      font: `400 10px ${T.mono}`,
+      resize: "vertical"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 flex-wrap"
+  }, /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "solid",
+    onClick: () => {
+      const t = JSON.stringify(backup);
+      setBackupText(t);
+      try {
+        navigator.clipboard.writeText(t);
+      } catch (e) {}
+    }
+  }, "Exporter + copier"), /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: () => {
+      try {
+        onRestore(JSON.parse(backupText));
+      } catch (e) {
+        setBackupText("⚠ JSON invalide — recolle la sauvegarde complète");
+      }
+    }
+  }, "Importer"), /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: () => flushAll()
+  }, "Sauvegarder maintenant"), window.__logout && /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: () => window.__logout()
+  }, "Déconnexion")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 10px ${T.sans}`,
+      color: T.faint,
+      lineHeight: 1.4
+    }
+  }, "« Exporter + copier » met tout ton historique dans le presse-papier. Colle-le dans une note une fois par semaine : c'est la seule sauvegarde dont tu contrôles vraiment la durée de vie."))));
+}
+
+/* ============================ APP ============================ */
+function App() {
+  const [tab, setTab] = useState("reveil");
+  const [ready, setReady] = useState(false);
+  const [days, setDays] = useState({});
+  const [lib, setLib] = useState(SEED_LIB);
+  const [workouts, setWorkouts] = useState([]);
+  const [measures, setMeasures] = useState([]);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [store, setStore] = useState({
+    probe: null,
+    boots: null,
+    last: null,
+    err: null
+  });
+  useEffect(() => {
+    setSaveNotifier(r => setStore(s => ({
+      ...s,
+      last: r.at,
+      err: r.ok ? null : r.err
+    })));
+    (async () => {
+      const probe = await storageProbe();
+      const [d, l, w, m, s, meta] = await Promise.all([loadKey(K.days, {}), loadKey(K.lib, SEED_LIB), loadKey(K.wk, []), loadKey(K.ms, []), loadKey(K.set, DEFAULT_SETTINGS), loadKey(K.meta, {
+        boots: 0
+      })]);
+      setDays(d || {});
+      setLib(l && l.length ? l : SEED_LIB);
+      setWorkouts(w || []);
+      setMeasures(m || []);
+      setSettings({
+        ...DEFAULT_SETTINGS,
+        ...(s || {})
+      });
+      const boots = (meta.boots || 0) + 1;
+      setStore({
+        probe,
+        boots,
+        last: null,
+        err: probe.ok ? null : probe.err
+      });
+      schedule(K.meta, {
+        boots,
+        at: Date.now()
+      }, 0);
+      setReady(true);
+    })();
+    const flush = () => {
+      flushAll();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flush();
+    });
+    return () => window.removeEventListener("pagehide", flush);
+  }, []);
+  useEffect(() => {
+    if (ready) schedule(K.days, days);
+  }, [days, ready]);
+  useEffect(() => {
+    if (ready) schedule(K.lib, lib);
+  }, [lib, ready]);
+  useEffect(() => {
+    if (ready) schedule(K.wk, workouts);
+  }, [workouts, ready]);
+  useEffect(() => {
+    if (ready) schedule(K.ms, measures);
+  }, [measures, ready]);
+  useEffect(() => {
+    if (ready) schedule(K.set, settings);
+  }, [settings, ready]);
+  const setDay = useCallback((date, patch) => {
+    setDays(prev => ({
+      ...prev,
+      [date]: {
+        ...(prev[date] || {}),
+        ...patch
+      }
+    }));
+  }, []);
+  const engine = useMemo(() => computeEngine(days, settings), [days, settings]);
+  const startDd = daysBetween(engine.settings.startDate || "2026-07-27", todayKey());
+  const phaseLabel = startDd < 0 ? `départ lun. 27/07 · J−${-startDd}` : `S${Math.floor(startDd / 7) + 1} · J${startDd + 1}`;
+  const TABS = [{
+    k: "reveil",
+    n: "Réveil",
+    i: "◐"
+  }, {
+    k: "macros",
+    n: "Macros",
+    i: "◑"
+  }, {
+    k: "muscu",
+    n: "Muscu",
+    i: "◒"
+  }, {
+    k: "mesures",
+    n: "Mesures",
+    i: "◓"
+  }, {
+    k: "bilan",
+    n: "Bilan",
+    i: "◉"
+  }];
+  if (!ready) return /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.ground,
+      minHeight: "100vh",
+      display: "grid",
+      placeItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("style", null, FONTS), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `500 12px ${T.mono}`,
+      color: T.faint,
+      letterSpacing: ".2em"
+    }
+  }, "CHARGEMENT…"));
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.ground,
+      minHeight: "100vh",
+      fontFamily: T.sans,
+      color: T.bone
+    }
+  }, /*#__PURE__*/React.createElement("style", null, FONTS), /*#__PURE__*/React.createElement("div", {
+    className: "mx-auto",
+    style: {
+      maxWidth: 620,
+      paddingBottom: 92
+    }
+  }, /*#__PURE__*/React.createElement("header", {
+    className: "px-4 pt-5 pb-3 flex items-end justify-between"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `500 9px ${T.mono}`,
+      letterSpacing: ".26em",
+      color: T.faint,
+      textTransform: "uppercase"
+    }
+  }, engine.isMaint ? "Maintenance" : "Sèche", " · ", phaseLabel), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `700 24px/1.1 ${T.sans}`,
+      color: T.bone,
+      marginTop: 5,
+      letterSpacing: "-0.02em"
+    }
+  }, "Poste de contrôle")), /*#__PURE__*/React.createElement("div", {
+    className: "text-right"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `600 18px ${T.mono}`,
+      color: T.amber
+    }
+  }, nf(engine.currentTrend, 1)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 9px ${T.mono}`,
+      color: T.faint,
+      letterSpacing: ".1em"
+    }
+  }, "KG TENDANCE"))), /*#__PURE__*/React.createElement("div", {
+    className: "px-3"
+  }, store.probe && !store.probe.ok && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-3 mb-3",
+    style: {
+      borderColor: T.brick,
+      background: T.brick + "18"
+    }
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: T.brick
+  }, "Stockage indisponible"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.bone,
+      marginTop: 5,
+      lineHeight: 1.45
+    }
+  }, store.probe.err, ". Tes saisies restent en mémoire pendant la session mais ", /*#__PURE__*/React.createElement("b", null, "seront perdues à la fermeture"), ". Utilise l'export en bas de l'onglet Bilan avant de quitter.")), store.probe && store.probe.ok && store.err && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-3 mb-3",
+    style: {
+      borderColor: T.amber
+    }
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: T.amber
+  }, "Sync cloud en échec — données en sécurité en local, resync auto"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.dim,
+      marginTop: 5,
+      lineHeight: 1.45
+    }
+  }, store.err)), tab === "reveil" && /*#__PURE__*/React.createElement(Reveil, {
+    days: days,
+    setDay: setDay,
+    engine: engine,
+    settings: engine.settings,
+    setSettings: setSettings
+  }), tab === "macros" && /*#__PURE__*/React.createElement(Macros, {
+    days: days,
+    setDay: setDay,
+    lib: lib,
+    setLib: setLib,
+    engine: engine,
+    settings: engine.settings,
+    setSettings: setSettings
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: tab === "muscu" ? "block" : "none"
+    }
+  }, /*#__PURE__*/React.createElement(Muscu, {
+    workouts: workouts,
+    setWorkouts: setWorkouts
+  })), tab === "mesures" && /*#__PURE__*/React.createElement(Mesures, {
+    measures: measures,
+    setMeasures: setMeasures,
+    days: days
+  }), tab === "bilan" && /*#__PURE__*/React.createElement(Bilan, {
+    days: days,
+    engine: engine,
+    workouts: workouts,
+    settings: engine.settings,
+    setSettings: setSettings,
+    store: store,
+    backup: {
+      days,
+      lib,
+      workouts,
+      measures,
+      settings: engine.settings
+    },
+    onRestore: b => {
+      if (b.days) setDays(b.days);
+      if (b.lib) setLib(b.lib);
+      if (b.workouts) setWorkouts(b.workouts);
+      if (b.measures) setMeasures(b.measures);
+      if (b.settings) setSettings({
+        ...DEFAULT_SETTINGS,
+        ...b.settings
+      });
+    }
+  }))), /*#__PURE__*/React.createElement("nav", {
+    className: "fixed bottom-0 left-0 right-0",
+    style: {
+      background: T.panel + "F2",
+      backdropFilter: "blur(12px)",
+      borderTop: `1px solid ${T.line}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mx-auto flex",
+    style: {
+      maxWidth: 620
+    }
+  }, TABS.map(t => /*#__PURE__*/React.createElement("button", {
+    key: t.k,
+    onClick: () => setTab(t.k),
+    className: "flex-1 flex flex-col items-center justify-center gap-1",
+    style: {
+      height: 66,
+      background: "none",
+      border: "none",
+      cursor: "pointer",
+      paddingBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `400 15px ${T.mono}`,
+      color: tab === t.k ? T.amber : T.faint
+    }
+  }, t.i), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `600 10px ${T.sans}`,
+      color: tab === t.k ? T.bone : T.faint
+    }
+  }, t.n), /*#__PURE__*/React.createElement("span", {
+    style: {
+      height: 2,
+      width: 16,
+      background: tab === t.k ? T.amber : "transparent",
+      borderRadius: 2
+    }
+  }))))));
+}
+
+/* ============================ GATE — config → auth → sync → app ============================ */
+function GateShell({
+  children,
+  sub
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.ground,
+      minHeight: "100vh",
+      display: "grid",
+      placeItems: "center",
+      fontFamily: T.sans,
+      padding: 16
+    }
+  }, /*#__PURE__*/React.createElement("style", null, FONTS), /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: "100%",
+      maxWidth: 420
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-center mb-6"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `500 9px ${T.mono}`,
+      letterSpacing: ".3em",
+      color: T.faint,
+      textTransform: "uppercase"
+    }
+  }, "Sèche · préservation musculaire"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `700 28px ${T.sans}`,
+      color: T.bone,
+      marginTop: 6,
+      letterSpacing: "-0.02em"
+    }
+  }, "Poste de contrôle"), sub && /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.dim,
+      marginTop: 6
+    }
+  }, sub)), children));
+}
+function Gate() {
+  const [cfg, setCfg] = useState({
+    url: LSW.getItem("cfg:sburl") || "",
+    key: LSW.getItem("cfg:sbkey") || ""
+  });
+  const [phase, setPhase] = useState("boot"); // boot | config | auth | pull | app
+  const [email, setEmail] = useState(LSW.getItem("cfg:email") || "");
+  const [pw, setPw] = useState("");
+  const [mode, setMode] = useState("login");
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const makeClient = (u, k) => {
+    window.__sb = window.supabase.createClient(u, k);
+  };
+  const logout = async () => {
+    try {
+      await window.__sb.auth.signOut();
+    } catch (e) {}
+    window.__uid = null;
+    location.reload();
+  };
+  const enter = async session => {
+    window.__uid = session.user.id;
+    window.__logout = logout;
+    setPhase("pull");
+    const r = await cloudPull();
+    if (!r.ok) setMsg("Sync initiale impossible (" + r.err + ") — l'app démarre en local, resync auto.");
+    setPhase("app");
+  };
+  useEffect(() => {
+    (async () => {
+      if (!window.supabase) {
+        setPhase("config");
+        setMsg("Librairie Supabase non chargée — vérifie ta connexion puis recharge.");
+        return;
+      }
+      if (!cfg.url || !cfg.key) {
+        setPhase("config");
+        return;
+      }
+      makeClient(cfg.url, cfg.key);
+      try {
+        const {
+          data
+        } = await window.__sb.auth.getSession();
+        if (data && data.session) await enter(data.session);else setPhase("auth");
+      } catch (e) {
+        setPhase("auth");
+      }
+    })();
+  }, []);
+  const saveCfg = () => {
+    const u = cfg.url.trim(),
+      k = cfg.key.trim();
+    if (!u.startsWith("https://") || !k) {
+      setMsg("URL (https://…supabase.co) et clé anon requises.");
+      return;
+    }
+    LSW.setItem("cfg:sburl", u);
+    LSW.setItem("cfg:sbkey", k);
+    makeClient(u, k);
+    setMsg(null);
+    setPhase("auth");
+  };
+  const submit = async () => {
+    if (!email || !pw) {
+      setMsg("Email et mot de passe requis.");
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    LSW.setItem("cfg:email", email.trim());
+    try {
+      const res = mode === "signup" ? await window.__sb.auth.signUp({
+        email: email.trim(),
+        password: pw
+      }) : await window.__sb.auth.signInWithPassword({
+        email: email.trim(),
+        password: pw
+      });
+      if (res.error) throw res.error;
+      if (res.data && res.data.session) {
+        await enter(res.data.session);
+      } else {
+        setMsg("Compte créé. Si Supabase exige une confirmation email, valide-la puis connecte-toi (ou désactive « Confirm email » dans Authentication → Providers → Email).");
+        setMode("login");
+      }
+    } catch (e) {
+      setMsg(String(e && e.message || e));
+    }
+    setBusy(false);
+  };
+  if (phase === "app") return /*#__PURE__*/React.createElement(App, null);
+  if (phase === "boot" || phase === "pull") {
+    return /*#__PURE__*/React.createElement(GateShell, {
+      sub: phase === "pull" ? "Synchronisation de tes données…" : "Démarrage…"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "text-center",
+      style: {
+        font: `500 12px ${T.mono}`,
+        color: T.faint,
+        letterSpacing: ".2em"
+      }
+    }, "●●●"));
+  }
+  if (phase === "config") {
+    return /*#__PURE__*/React.createElement(GateShell, {
+      sub: "Première configuration — à faire une seule fois par appareil"
+    }, /*#__PURE__*/React.createElement(Panel, {
+      className: "p-4"
+    }, /*#__PURE__*/React.createElement(Eyebrow, {
+      color: T.amber
+    }, "Connexion à ta base Supabase"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `400 12px ${T.sans}`,
+        color: T.dim,
+        margin: "8px 0 12px",
+        lineHeight: 1.5
+      }
+    }, "Dans ton projet Supabase : ", /*#__PURE__*/React.createElement("b", {
+      style: {
+        color: T.bone
+      }
+    }, "Settings → API"), ". Copie « Project URL » et la clé « anon public »."), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-2"
+    }, /*#__PURE__*/React.createElement(Field, {
+      label: "Project URL",
+      type: "text",
+      value: cfg.url,
+      onChange: v => setCfg({
+        ...cfg,
+        url: v || ""
+      }),
+      placeholder: "https://xxxx.supabase.co"
+    }), /*#__PURE__*/React.createElement(Field, {
+      label: "Clé anon public",
+      type: "text",
+      value: cfg.key,
+      onChange: v => setCfg({
+        ...cfg,
+        key: v || ""
+      }),
+      placeholder: "eyJhbGci…"
+    })), msg && /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `400 12px ${T.sans}`,
+        color: T.brick,
+        marginTop: 10
+      }
+    }, msg), /*#__PURE__*/React.createElement(Btn, {
+      tone: "solid",
+      style: {
+        width: "100%",
+        marginTop: 14
+      },
+      onClick: saveCfg
+    }, "Continuer"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `400 10px ${T.sans}`,
+        color: T.faint,
+        marginTop: 10,
+        lineHeight: 1.5
+      }
+    }, "La clé anon est faite pour être côté client : tes données sont protégées par les règles RLS (chaque compte ne voit que ses lignes), pas par le secret de cette clé.")));
+  }
+  return /*#__PURE__*/React.createElement(GateShell, {
+    sub: "Tes données te suivent sur tous tes appareils"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mb-4"
+  }, /*#__PURE__*/React.createElement(Chip, {
+    active: mode === "login",
+    onClick: () => setMode("login")
+  }, "Se connecter"), /*#__PURE__*/React.createElement(Chip, {
+    active: mode === "signup",
+    onClick: () => setMode("signup")
+  }, "Créer un compte")), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2"
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "Email",
+    type: "text",
+    value: email,
+    onChange: v => setEmail(v || ""),
+    placeholder: "toi@mail.com"
+  }), /*#__PURE__*/React.createElement(Field, {
+    label: "Mot de passe",
+    type: "password",
+    value: pw,
+    onChange: v => setPw(v || ""),
+    placeholder: "••••••••"
+  })), msg && /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.amber,
+      marginTop: 10,
+      lineHeight: 1.45
+    }
+  }, msg), /*#__PURE__*/React.createElement(Btn, {
+    tone: "solid",
+    style: {
+      width: "100%",
+      marginTop: 14
+    },
+    onClick: submit,
+    disabled: busy
+  }, busy ? "…" : mode === "signup" ? "Créer le compte" : "Entrer"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      LSW.removeItem("cfg:sburl");
+      LSW.removeItem("cfg:sbkey");
+      setCfg({
+        url: "",
+        key: ""
+      });
+      setPhase("config");
+    },
+    style: {
+      background: "none",
+      border: "none",
+      color: T.faint,
+      font: `400 11px ${T.sans}`,
+      marginTop: 12,
+      cursor: "pointer",
+      width: "100%"
+    }
+  }, "Changer de projet Supabase")));
+}
+ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(Gate, null));
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
