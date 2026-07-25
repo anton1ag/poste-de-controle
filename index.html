@@ -1710,8 +1710,6 @@ function Reveil({
   const sleep7 = rolling(days, 7, "sleep");
   const steps7 = rolling(days, 7, "steps");
   const filled = [d.sleep > 0, d.steps > 0, d.weight > 0].filter(Boolean).length;
-  const caf = d.cafHour;
-  const cafLate = caf !== null && caf !== undefined && caf > 14;
   const plan = PLAN_WEEK.find(p => p.d === parseYmd(date).getDay());
   const startDd = daysBetween(settings.startDate || "2026-07-27", todayKey());
   const prep = settings.prep || {};
@@ -1920,40 +1918,33 @@ function Reveil({
       color: T.faint
     }
   }, s.d)))))), /*#__PURE__*/React.createElement(Panel, {
-    className: "p-4",
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, null, "Caféine · dernière prise possible (coucher ~23 h)"), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col mt-2"
+  }, [["Monster ZERO (160 mg)", "13 h"], ["Double expresso (~130 mg)", "14 h"], ["Café filtre / allongé (~110 mg)", "15 h"], ["Expresso (~65 mg)", "17 h"], ["Thé noir / vert (~30-45 mg)", "19 h"]].map(([n, h]) => /*#__PURE__*/React.createElement("div", {
+    key: n,
+    className: "flex items-baseline justify-between py-1",
     style: {
-      borderColor: cafLate ? T.brick + "77" : T.line
+      borderBottom: `1px solid ${T.line}`
     }
-  }, /*#__PURE__*/React.createElement(Eyebrow, {
-    color: cafLate ? T.brick : T.faint
-  }, "Caféine · levier sommeil n° 1"), /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-2 items-end mt-2"
-  }, /*#__PURE__*/React.createElement(Field, {
-    label: "Heure de prise",
-    unit: "h",
-    value: d.cafHour,
-    onChange: v => upd({
-      cafHour: v
-    }),
-    step: "0.5",
-    placeholder: "13.5"
-  }), /*#__PURE__*/React.createElement(Field, {
-    label: "Dose",
-    unit: "mg",
-    value: d.cafMg,
-    onChange: v => upd({
-      cafMg: v
-    }),
-    step: "10",
-    placeholder: "160"
-  })), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.dim
+    }
+  }, n), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `600 13px ${T.mono}`,
+      color: T.amber
+    }
+  }, "avant ", h)))), /*#__PURE__*/React.createElement("div", {
     style: {
       font: `400 11px ${T.sans}`,
-      color: cafLate ? T.brick : T.faint,
+      color: T.faint,
       marginTop: 8,
       lineHeight: 1.45
     }
-  }, cafLate ? `Prise à ${caf} h : demi-vie 5-6 h, il en reste trop au coucher. La cible est 13-14 h — tu gardes ~55 % d'effet sur la séance et tu supprimes le coût sommeil.` : "Cible 13-14 h, 200-400 mg, Monster ZERO uniquement. Pas tous les jours : réserve-la aux 2 séances les plus dures.")), /*#__PURE__*/React.createElement(Panel, {
+  }, "Demi-vie 5-6 h : plus la dose est grosse, plus le cutoff est tôt. Coucher avant 23 h → avance tout d'autant. Cible séance : 13-14 h, Monster ZERO uniquement, pas tous les jours.")), /*#__PURE__*/React.createElement(Panel, {
     className: "p-4"
   }, /*#__PURE__*/React.createElement(Eyebrow, null, "Marqueurs de la veille"), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2 flex-wrap mt-2"
@@ -3278,14 +3269,6 @@ function Bilan({
     if (p7 !== null && p7 < engine.protG * 0.9) out.push({
       t: `Protéines : ${nf(p7)} g/j`,
       d: `Plancher ${engine.protG} g. C'est la variable n° 1 de préservation musculaire — non négociable, y compris le week-end.`,
-      c: T.brick
-    });
-
-    // caféine tardive
-    const cafLate = Object.entries(days).filter(([d, v]) => d >= addDays(todayKey(), -6) && v.cafHour > 15).length;
-    if (cafLate >= 2) out.push({
-      t: `Caféine après 15 h : ${cafLate} jours cette semaine`,
-      d: "Demi-vie 5-6 h. Déplace à 13-14 h : tu gardes ~55 % d'effet sur la séance et tu récupères ton endormissement.",
       c: T.brick
     });
 
