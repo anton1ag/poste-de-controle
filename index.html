@@ -88,6 +88,7 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const nf = (v, d = 0) => v === null || v === undefined || Number.isNaN(v) ? "—" : Number(v).toFixed(d);
 const sum = a => a.reduce((x, y) => x + y, 0);
 const mean = a => a.length ? sum(a) / a.length : null;
+const fmtH = v => v === null || v === undefined ? "—" : `${Math.floor(v)}h${String(Math.round((v - Math.floor(v)) * 60)).padStart(2, "0")}`;
 const r1 = v => Math.round(v * 10) / 10;
 const e1rm = (w, r) => r >= 1 && w > 0 ? w * (1 + r / 30) : 0;
 const KEY_LIFTS = ["Développé couché barre", "Tractions lestées", "Développé militaire haltères assis", "Rowing T-bar / machine lourd"];
@@ -1794,15 +1795,73 @@ function Reveil({
     setDate: setDate
   })), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2 mb-2"
-  }, /*#__PURE__*/React.createElement(Field, {
-    label: "Sommeil",
-    unit: "h",
-    value: d.sleep,
-    onChange: v => upd({
-      sleep: v
-    }),
-    step: "0.25"
-  }), /*#__PURE__*/React.createElement(Field, {
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-1 flex-1 min-w-0"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `500 10px/1.3 ${T.mono}`,
+      letterSpacing: ".1em",
+      color: T.faint,
+      textTransform: "uppercase"
+    }
+  }, "Sommeil"), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-1 rounded-lg px-2",
+    style: {
+      background: T.panel2,
+      border: `1px solid ${T.line}`,
+      height: 42
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    inputMode: "numeric",
+    min: "0",
+    max: "23",
+    placeholder: "8",
+    value: d.sleep !== null && d.sleep !== undefined ? Math.floor(d.sleep) : "",
+    onChange: e => {
+      const h = e.target.value === "" ? null : Number(e.target.value);
+      const m = d.sleep ? Math.round((d.sleep - Math.floor(d.sleep)) * 60) : 0;
+      upd({
+        sleep: h === null && !m ? null : (h || 0) + m / 60
+      });
+    },
+    className: "w-full bg-transparent outline-none text-right",
+    style: {
+      font: `500 16px ${T.mono}`,
+      color: T.bone,
+      border: "none"
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `400 11px ${T.mono}`,
+      color: T.faint
+    }
+  }, "h"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    inputMode: "numeric",
+    min: "0",
+    max: "59",
+    placeholder: "00",
+    value: d.sleep !== null && d.sleep !== undefined ? Math.round((d.sleep - Math.floor(d.sleep)) * 60) : "",
+    onChange: e => {
+      const m = e.target.value === "" ? 0 : Math.min(59, Math.max(0, Number(e.target.value)));
+      const h = d.sleep ? Math.floor(d.sleep) : 0;
+      upd({
+        sleep: !h && !m && e.target.value === "" ? null : h + m / 60
+      });
+    },
+    className: "w-full bg-transparent outline-none",
+    style: {
+      font: `500 16px ${T.mono}`,
+      color: T.bone,
+      border: "none"
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `400 11px ${T.mono}`,
+      color: T.faint
+    }
+  }, "min"))), /*#__PURE__*/React.createElement(Field, {
     label: `Pas (${dowFr(addDays(date, -1))})`,
     value: d.steps,
     onChange: v => upd({
@@ -1972,10 +2031,8 @@ function Reveil({
   }, /*#__PURE__*/React.createElement(Eyebrow, null, "Sommeil · moy. 7 j"), /*#__PURE__*/React.createElement("div", {
     className: "mt-2"
   }, /*#__PURE__*/React.createElement(Num, {
-    v: sleep7,
-    unit: "h",
+    v: sleep7 !== null ? fmtH(sleep7) : null,
     size: 26,
-    d: 1,
     color: sleep7 && sleep7 < 7.5 ? T.brick : T.moss
   })), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -3257,7 +3314,7 @@ function Bilan({
       st7 = rolling(days, 7, "steps"),
       p7 = rolling(days, 7, "prot");
     if (s7 !== null && s7 < 7.5) out.push({
-      t: `Sommeil : ${nf(s7, 1)} h/nuit sur 7 j`,
+      t: `Sommeil : ${fmtH(s7)}/nuit sur 7 j`,
       d: "Sous ton besoin de 7 h 30. En déficit, le manque de sommeil déplace la perte vers le muscle et augmente la faim. Vérifie l'heure de ta caféine avant tout le reste.",
       c: T.brick
     });
