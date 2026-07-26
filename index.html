@@ -1484,6 +1484,71 @@ const Num = ({
     color: T.dim
   }
 }, unit));
+/* Saisie numérique tolérante : virgule OU point, clavier adapté, effacement libre */
+function NumField({
+  label,
+  value,
+  onChange,
+  unit,
+  step = "any",
+  placeholder
+}) {
+  const fmt = v => v === null || v === undefined ? "" : String(v).replace(".", ",");
+  const [txt, setTxt] = useState(fmt(value));
+  const own = useRef(value);
+  useEffect(() => {
+    if (value !== own.current) {
+      own.current = value;
+      setTxt(fmt(value));
+    }
+  }, [value]);
+  const isInt = /^\d+$/.test(String(step));
+  const handle = raw => {
+    let s = raw.replace(/[^\d.,]/g, "");
+    const i = s.search(/[.,]/);
+    if (i >= 0) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/[.,]/g, "");
+    if (isInt) s = s.replace(/[.,]/g, "");
+    setTxt(s);
+    const n = parseFloat(s.replace(",", "."));
+    const v = s === "" || Number.isNaN(n) ? null : n;
+    own.current = v;
+    onChange(v);
+  };
+  return /*#__PURE__*/React.createElement("label", {
+    className: "flex flex-col gap-1 flex-1 min-w-0"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `500 10px/1.3 ${T.mono}`,
+      letterSpacing: ".1em",
+      color: T.faint,
+      textTransform: "uppercase"
+    }
+  }, label), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-1 rounded-lg px-2",
+    style: {
+      background: T.panel2,
+      border: `1px solid ${T.line}`,
+      height: 42
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    inputMode: isInt ? "numeric" : "decimal",
+    value: txt,
+    placeholder: placeholder,
+    onChange: e => handle(e.target.value),
+    className: "w-full bg-transparent outline-none",
+    style: {
+      font: `500 16px ${T.mono}`,
+      color: T.bone,
+      border: "none"
+    }
+  }), unit && /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `400 11px ${T.mono}`,
+      color: T.faint
+    }
+  }, unit)));
+}
 const Field = ({
   label,
   value,
@@ -1492,41 +1557,49 @@ const Field = ({
   step = "any",
   type = "number",
   placeholder
-}) => /*#__PURE__*/React.createElement("label", {
-  className: "flex flex-col gap-1 flex-1 min-w-0"
-}, /*#__PURE__*/React.createElement("span", {
-  style: {
-    font: `500 10px/1.3 ${T.mono}`,
-    letterSpacing: ".1em",
-    color: T.faint,
-    textTransform: "uppercase"
-  }
-}, label), /*#__PURE__*/React.createElement("div", {
-  className: "flex items-center gap-1 rounded-lg px-2",
-  style: {
-    background: T.panel2,
-    border: `1px solid ${T.line}`,
-    height: 42
-  }
-}, /*#__PURE__*/React.createElement("input", {
-  type: type,
-  step: step,
-  inputMode: type === "number" ? "decimal" : undefined,
-  value: value ?? "",
-  placeholder: placeholder,
-  onChange: e => onChange(e.target.value === "" ? null : type === "number" ? Number(e.target.value) : e.target.value),
-  className: "w-full bg-transparent outline-none",
-  style: {
-    font: `500 16px ${T.mono}`,
-    color: T.bone,
-    border: "none"
-  }
-}), unit && /*#__PURE__*/React.createElement("span", {
-  style: {
-    font: `400 11px ${T.mono}`,
-    color: T.faint
-  }
-}, unit)));
+}) => {
+  if (type === "number") return /*#__PURE__*/React.createElement(NumField, {
+    label: label,
+    value: value,
+    onChange: onChange,
+    unit: unit,
+    step: step,
+    placeholder: placeholder
+  });
+  return /*#__PURE__*/React.createElement("label", {
+    className: "flex flex-col gap-1 flex-1 min-w-0"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `500 10px/1.3 ${T.mono}`,
+      letterSpacing: ".1em",
+      color: T.faint,
+      textTransform: "uppercase"
+    }
+  }, label), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-1 rounded-lg px-2",
+    style: {
+      background: T.panel2,
+      border: `1px solid ${T.line}`,
+      height: 42
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: type,
+    value: value ?? "",
+    placeholder: placeholder,
+    onChange: e => onChange(e.target.value === "" ? null : e.target.value),
+    className: "w-full bg-transparent outline-none",
+    style: {
+      font: `500 16px ${T.mono}`,
+      color: T.bone,
+      border: "none"
+    }
+  }), unit && /*#__PURE__*/React.createElement("span", {
+    style: {
+      font: `400 11px ${T.mono}`,
+      color: T.faint
+    }
+  }, unit)));
+};
 const Btn = ({
   children,
   onClick,
@@ -1693,6 +1766,46 @@ function TrendStrip({
     stroke: T.ground,
     strokeWidth: "2"
   }));
+}
+
+/* Input nu (sans label) tolérant à la virgule — grilles de séries, multiplicateurs */
+function DecInput({
+  value,
+  onChange,
+  placeholder,
+  style,
+  className,
+  intOnly
+}) {
+  const fmt = v => v === null || v === undefined || v === "" ? "" : String(v).replace(".", ",");
+  const [txt, setTxt] = useState(fmt(value));
+  const own = useRef(value);
+  useEffect(() => {
+    if (value !== own.current) {
+      own.current = value;
+      setTxt(fmt(value));
+    }
+  }, [value]);
+  const handle = raw => {
+    let s = raw.replace(/[^\d.,]/g, "");
+    const i = s.search(/[.,]/);
+    if (i >= 0) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/[.,]/g, "");
+    if (intOnly) s = s.replace(/[.,]/g, "");
+    setTxt(s);
+    const n = parseFloat(s.replace(",", "."));
+    const v = s === "" || Number.isNaN(n) ? null : n;
+    own.current = v;
+    onChange(v);
+  };
+  return /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    inputMode: intOnly ? "numeric" : "decimal",
+    value: txt,
+    placeholder: placeholder,
+    onChange: e => handle(e.target.value),
+    className: className,
+    style: style
+  });
 }
 
 /* ---------- saisie sommeil h/min (état local : pas de zéro fantôme) ---------- */
@@ -2616,14 +2729,12 @@ function Macros({
       font: `400 10px ${T.mono}`,
       color: T.faint
     }
-  }, it.kcal, " kcal · P", it.p, " G", it.c, " L", it.f, " / ", it.u)), /*#__PURE__*/React.createElement("input", {
-    type: "number",
-    step: "0.5",
+  }, it.kcal, " kcal · P", it.p, " G", it.c, " L", it.f, " / ", it.u)), /*#__PURE__*/React.createElement(DecInput, {
     placeholder: "×1",
-    value: qty[it.id] ?? "",
-    onChange: e => setQty({
+    value: qty[it.id] ?? null,
+    onChange: v => setQty({
       ...qty,
-      [it.id]: e.target.value
+      [it.id]: v
     }),
     className: "rounded-md text-center outline-none",
     style: {
@@ -2641,7 +2752,7 @@ function Macros({
       addItems([[it, Number(qty[it.id]) || 1]]);
       setQty({
         ...qty,
-        [it.id]: ""
+        [it.id]: null
       });
     }
   }, "+"))))));
@@ -2853,14 +2964,12 @@ function Muscu({
           font: `500 11px ${T.mono}`,
           color: s.r > 0 ? T.amber : T.faint
         }
-      }, j + 1), ["w", "r", "rpe"].map(f => /*#__PURE__*/React.createElement("input", {
+      }, j + 1), ["w", "r", "rpe"].map(f => /*#__PURE__*/React.createElement(DecInput, {
         key: f,
-        type: "number",
-        step: f === "w" ? "1.25" : f === "rpe" ? "0.5" : "1",
-        inputMode: "decimal",
-        value: s[f] ?? "",
-        onChange: ev => updSet(i, j, {
-          [f]: ev.target.value === "" ? null : Number(ev.target.value)
+        value: s[f],
+        intOnly: f === "r",
+        onChange: v => updSet(i, j, {
+          [f]: v
         }),
         className: "flex-1 min-w-0 rounded-md text-center outline-none",
         style: {
