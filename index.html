@@ -91,8 +91,8 @@ const mean = a => a.length ? sum(a) / a.length : null;
 const fmtH = v => v === null || v === undefined ? "—" : `${Math.floor(v)}h${String(Math.round((v - Math.floor(v)) * 60)).padStart(2, "0")}`;
 const r1 = v => Math.round(v * 10) / 10;
 const e1rm = (w, r) => r >= 1 && w > 0 ? w * (1 + r / 30) : 0;
-const KEY_LIFTS = ["Développé couché barre", "Tractions lestées", "Développé militaire haltères assis", "Rowing T-bar / machine lourd"];
-const LIFT_SHORT = {
+let KEY_LIFTS = ["Développé couché barre", "Tractions lestées", "Développé militaire haltères assis", "Rowing T-bar / machine lourd"];
+let LIFT_SHORT = {
   "Développé couché barre": "Bench",
   "Tractions lestées": "Tractions +",
   "Développé militaire haltères assis": "Militaire",
@@ -101,7 +101,7 @@ const LIFT_SHORT = {
 
 /* ============================ PROGRAMME D'ENTRAÎNEMENT ============================ */
 /* Aligné sur Programmes_Entrainement.md — abdos en avant-dernier, delts latéraux 3×/sem */
-const PROGRAM = {
+let PROGRAM = {
   A1: {
     label: "J1 · Push A",
     tag: "lourd",
@@ -756,11 +756,11 @@ const PROGRAM = {
     }]
   }
 };
-const SESSION_KEYS = Object.keys(PROGRAM);
-const PLACES = ["Salle", "Élastiques", "Hôtel", "Sans matériel", "Santé"];
+let SESSION_KEYS = Object.keys(PROGRAM);
+let PLACES = ["Salle", "Élastiques", "Hôtel", "Sans matériel", "Santé"];
 
 /* Cibles de séries dures / semaine — Programmes_Entrainement.md §1 */
-const VOL_TARGETS = {
+let VOL_TARGETS = {
   "Épaules": 14,
   "Dos": 17,
   "Pec": 13,
@@ -770,7 +770,7 @@ const VOL_TARGETS = {
   "Jambes": 9,
   "Delt. post.": 7
 };
-const PLAN_WEEK = [{
+let PLAN_WEEK = [{
   d: 1,
   n: "lun",
   s: "J1 Push A"
@@ -802,7 +802,7 @@ const PLAN_WEEK = [{
 
 /* ============================ NUTRITION ============================ */
 /* Blocs du plan — Programme_Alimentation.md §2 et §3 */
-const BLOCKS = {
+let BLOCKS = {
   pdj: {
     id: "b1",
     n: "Petit-déjeuner optimisé (skyr 220 g)",
@@ -864,7 +864,7 @@ const BLOCKS = {
     cat: "Plan"
   }
 };
-const SEED_LIB = [BLOCKS.pdj, BLOCKS.boeuf, BLOCKS.poulet, BLOCKS.shaker, BLOCKS.banane, BLOCKS.repasAllege,
+let SEED_LIB = [BLOCKS.pdj, BLOCKS.boeuf, BLOCKS.poulet, BLOCKS.shaker, BLOCKS.banane, BLOCKS.repasAllege,
 // Composants
 {
   id: "c1",
@@ -1103,7 +1103,7 @@ const SEED_LIB = [BLOCKS.pdj, BLOCKS.boeuf, BLOCKS.poulet, BLOCKS.shaker, BLOCKS
   u: "repas",
   cat: "Voyage"
 }];
-const FECULENTS = {
+let FECULENTS = {
   "Pomme de terre": {
     boeuf: "600 g cru",
     poulet: "660 g cru",
@@ -1130,7 +1130,7 @@ const FECULENTS = {
     courses: "1,35 kg"
   }
 };
-const SUPPS = [{
+let SUPPS = [{
   k: "crea",
   n: "Créatine 5 g",
   d: "7 j/7, même les jours off"
@@ -1143,7 +1143,7 @@ const SUPPS = [{
   n: "Vitamine D 2000 UI",
   d: "Avec un repas gras"
 }];
-const PREP_TASKS = ["Acheter un mètre ruban (~5 €) — sans lui, impossible de distinguer perte de gras et perte de muscle", "Commander l'oméga-3 (2 g EPA+DHA/j) — le remplaçant du collagène", "Vérifier le stock : whey (~280 g/sem), créatine, vitamine D", "Dimanche : courses de la liste + batch cooking 10 boîtes (5 bœuf + 5 poulet)", "Dimanche soir : mesures de référence + photos J0 (face/dos/profil, à jeun)", "Dès ce soir : caféine avant 14 h — le levier sommeil se règle avant le départ"];
+let PREP_TASKS = ["Acheter un mètre ruban (~5 €) — sans lui, impossible de distinguer perte de gras et perte de muscle", "Commander l'oméga-3 (2 g EPA+DHA/j) — le remplaçant du collagène", "Vérifier le stock : whey (~280 g/sem), créatine, vitamine D", "Dimanche : courses de la liste + batch cooking 10 boîtes (5 bœuf + 5 poulet)", "Dimanche soir : mesures de référence + photos J0 (face/dos/profil, à jeun)", "Dès ce soir : caféine avant 14 h — le levier sommeil se règle avant le départ"];
 const MEASURE_FIELDS = [{
   k: "cou",
   n: "Cou"
@@ -1173,15 +1173,16 @@ const MEASURE_FIELDS = [{
 /* ============================ STOCKAGE — local-first + sync Supabase ============================ */
 /* Écriture locale IMMÉDIATE (localStorage) = jamais de perte.
    Push cloud débouncé + retry. Pull/merge au démarrage. Resync auto au retour du réseau. */
-const K = {
+let K = {
   days: "sc2:days",
   lib: "sc2:lib",
   wk: "sc2:workouts",
   ms: "sc2:measures",
   set: "sc2:settings",
-  meta: "sc2:meta"
+  meta: "sc2:meta",
+  prof: "sc2:profile"
 };
-const DEFAULT_SETTINGS = {
+let DEFAULT_SETTINGS = {
   targetRatePct: 0.5,
   protPerKg: 2.3,
   fatPerKg: 0.69,
@@ -1337,6 +1338,113 @@ async function cloudPull() {
 window.addEventListener("online", () => {
   flushAll();
 });
+
+/* ---------- DUO : publication d'un résumé lisible par le partenaire ---------- */
+let duoTimer = null;
+function publishPulse(payload, delay = 2500) {
+  clearTimeout(duoTimer);
+  duoTimer = setTimeout(async () => {
+    try {
+      if (!window.__sb || !window.__uid || !payload.duo || !payload.pseudo) return;
+      await window.__sb.from("pulse").upsert({
+        user_id: window.__uid,
+        pseudo: payload.pseudo,
+        duo: payload.duo,
+        data: payload.data,
+        at: Date.now()
+      }, {
+        onConflict: "user_id"
+      });
+    } catch (e) {/* le duo n'est pas critique : jamais bloquant */}
+  }, delay);
+}
+async function fetchPartners() {
+  try {
+    if (!window.__sb || !window.__uid) return {
+      ok: false,
+      err: "hors ligne",
+      rows: []
+    };
+    const {
+      data,
+      error
+    } = await window.__sb.from("pulse").select("user_id,pseudo,data,at").neq("user_id", window.__uid);
+    if (error) throw error;
+    return {
+      ok: true,
+      rows: data || []
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      err: String(e && e.message || e),
+      rows: []
+    };
+  }
+}
+
+/* ============================ PROFIL (programme = donnée, pas code) ============================ */
+const BASE_SETTINGS = {
+  mode: "deficit",
+  lastDeload: null,
+  prep: {},
+  pseudo: "",
+  duoCode: ""
+};
+
+/* Profil de référence : celui d'Antonin. Sert de gabarit à tout nouveau profil. */
+const DEFAULT_PROFILE = {
+  id: "antonin",
+  name: "Antonin",
+  program: PROGRAM,
+  volTargets: VOL_TARGETS,
+  planWeek: PLAN_WEEK,
+  blocks: BLOCKS,
+  seedLib: SEED_LIB,
+  feculents: FECULENTS,
+  supps: SUPPS,
+  prepTasks: PREP_TASKS,
+  keyLifts: KEY_LIFTS,
+  liftShort: LIFT_SHORT,
+  dayTypeNote: "Petit-déj + 2 repas batch + shaker whey = 2 495 kcal · 199 P · 290 G · 60 L. La seule différence un jour d'entraînement, c'est la banane, déduite du déjeuner.",
+  dayOn: ["pdj", "repasAllege", "banane", "poulet", "shaker"],
+  dayOff: ["pdj", "boeuf", "poulet", "shaker"],
+  quick: [["pdj", "+ Petit-déj"], ["boeuf", "+ Bœuf"], ["poulet", "+ Poulet"], ["shaker", "+ Shaker"]],
+  settings: {
+    targetRatePct: 0.5,
+    protPerKg: 2.3,
+    fatPerKg: 0.69,
+    startWeight: 87,
+    planDeficit: 2500,
+    planMaintenance: 2950,
+    feculent: "Pomme de terre",
+    startDate: "2026-07-27"
+  }
+};
+let PROFILE = DEFAULT_PROFILE;
+function applyProfile(p) {
+  PROFILE = {
+    ...DEFAULT_PROFILE,
+    ...(p || {})
+  };
+  PROGRAM = PROFILE.program || {};
+  SESSION_KEYS = Object.keys(PROGRAM);
+  PLACES = [...new Set(Object.values(PROGRAM).map(s => s.place))];
+  VOL_TARGETS = PROFILE.volTargets || {};
+  PLAN_WEEK = PROFILE.planWeek || [];
+  BLOCKS = PROFILE.blocks || {};
+  SEED_LIB = PROFILE.seedLib || [];
+  FECULENTS = PROFILE.feculents || {};
+  SUPPS = PROFILE.supps || [];
+  PREP_TASKS = PROFILE.prepTasks || [];
+  KEY_LIFTS = PROFILE.keyLifts || [];
+  LIFT_SHORT = PROFILE.liftShort || {};
+  DEFAULT_SETTINGS = {
+    ...BASE_SETTINGS,
+    ...(PROFILE.settings || {})
+  };
+  return PROFILE;
+}
 
 /* ============================ MOTEUR ============================ */
 function trendSeries(weighIns, alpha = 0.25) {
@@ -2274,7 +2382,9 @@ function Macros({
     commit([...meals, ...add]);
   };
   const journeeType = on => {
-    const base = on ? [[BLOCKS.pdj, 1], [BLOCKS.repasAllege, 1], [BLOCKS.banane, 1], [BLOCKS.poulet, 1], [BLOCKS.shaker, 1]] : [[BLOCKS.pdj, 1], [BLOCKS.boeuf, 1], [BLOCKS.poulet, 1], [BLOCKS.shaker, 1]];
+    const keys = on ? PROFILE.dayOn || [] : PROFILE.dayOff || [];
+    const base = keys.map(k => BLOCKS[k]).filter(Boolean).map(it => [it, 1]);
+    if (!base.length) return;
     commit(base.map(([it, m]) => ({
       id: uid(),
       n: it.n,
@@ -2356,7 +2466,7 @@ function Macros({
       }
     })));
   };
-  const fec = FECULENTS[settings.feculent] || FECULENTS["Pomme de terre"];
+  const fec = FECULENTS[settings.feculent] || FECULENTS[Object.keys(FECULENTS)[0]] || null;
   return /*#__PURE__*/React.createElement("div", {
     className: "flex flex-col gap-3"
   }, /*#__PURE__*/React.createElement(Panel, {
@@ -2418,7 +2528,7 @@ function Macros({
       margin: "6px 0 10px",
       lineHeight: 1.45
     }
-  }, "Petit-déj + 2 repas batch + shaker whey = 2 495 kcal · 199 P · 290 G · 60 L. La seule différence un jour d'entraînement, c'est la banane, déduite du déjeuner."), /*#__PURE__*/React.createElement("div", {
+  }, PROFILE.dayTypeNote), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2"
   }, /*#__PURE__*/React.createElement(Btn, {
     tone: "solid",
@@ -2433,24 +2543,13 @@ function Macros({
     },
     onClick: () => journeeType(false)
   }, "Jour OFF")), /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-2 mt-2"
-  }, /*#__PURE__*/React.createElement(Btn, {
+    className: "flex gap-2 mt-2 flex-wrap"
+  }, (PROFILE.quick || []).filter(([k]) => BLOCKS[k]).map(([k, lbl]) => /*#__PURE__*/React.createElement(Btn, {
+    key: k,
     size: "sm",
     tone: "quiet",
-    onClick: () => addItems([[BLOCKS.pdj, 1]])
-  }, "+ Petit-déj"), /*#__PURE__*/React.createElement(Btn, {
-    size: "sm",
-    tone: "quiet",
-    onClick: () => addItems([[BLOCKS.boeuf, 1]])
-  }, "+ Bœuf"), /*#__PURE__*/React.createElement(Btn, {
-    size: "sm",
-    tone: "quiet",
-    onClick: () => addItems([[BLOCKS.poulet, 1]])
-  }, "+ Poulet"), /*#__PURE__*/React.createElement(Btn, {
-    size: "sm",
-    tone: "quiet",
-    onClick: () => addItems([[BLOCKS.shaker, 1]])
-  }, "+ Shaker"))), /*#__PURE__*/React.createElement(Panel, {
+    onClick: () => addItems([[BLOCKS[k], 1]])
+  }, lbl)))), /*#__PURE__*/React.createElement(Panel, {
     className: "p-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-baseline justify-between"
@@ -2500,7 +2599,7 @@ function Macros({
     size: "sm",
     tone: "quiet",
     onClick: () => setShowBatch(!showBatch)
-  }, showBatch ? "Fermer" : "Liste de courses")), showBatch && /*#__PURE__*/React.createElement("div", {
+  }, showBatch ? "Fermer" : "Liste de courses")), showBatch && fec && /*#__PURE__*/React.createElement("div", {
     className: "mt-3"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2 flex-wrap mb-3"
@@ -4119,6 +4218,389 @@ function Bilan({
   }, "« Exporter + copier » met tout ton historique dans le presse-papier. Colle-le dans une note une fois par semaine : c'est la seule sauvegarde dont tu contrôles vraiment la durée de vie."))));
 }
 
+/* ============================ DUO ============================ */
+function Duo({
+  settings,
+  setSettings,
+  engine,
+  days,
+  workouts,
+  measures,
+  profile,
+  onProfile
+}) {
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [showProf, setShowProf] = useState(false);
+  const [profText, setProfText] = useState("");
+  const load = async () => {
+    setBusy(true);
+    const r = await fetchPartners();
+    setRows(r.rows);
+    setErr(r.ok ? null : r.err);
+    setBusy(false);
+  };
+  useEffect(() => {
+    if (settings.duoCode && settings.pseudo) load();
+  }, [settings.duoCode, settings.pseudo]);
+  const axis = {
+    tick: {
+      fill: T.faint,
+      fontSize: 10,
+      fontFamily: T.mono
+    },
+    stroke: T.line
+  };
+  const tip = {
+    contentStyle: {
+      background: T.panel2,
+      border: `1px solid ${T.line}`,
+      borderRadius: 8,
+      fontFamily: T.mono,
+      fontSize: 12
+    },
+    labelStyle: {
+      color: T.dim
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-3"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: T.peri
+  }, "Mon partage"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.faint,
+      margin: "6px 0 10px",
+      lineHeight: 1.45
+    }
+  }, "Même code de duo des deux côtés = vous vous voyez. Code vide = tu ne partages rien et tu ne vois rien."), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2"
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "Mon pseudo",
+    type: "text",
+    value: settings.pseudo,
+    onChange: v => setSettings({
+      ...settings,
+      pseudo: v || ""
+    }),
+    placeholder: "Antonin"
+  }), /*#__PURE__*/React.createElement(Field, {
+    label: "Code de duo",
+    type: "text",
+    value: settings.duoCode,
+    onChange: v => setSettings({
+      ...settings,
+      duoCode: (v || "").toUpperCase()
+    }),
+    placeholder: "SECHE2026"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mt-3"
+  }, /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: load,
+    disabled: busy || !settings.duoCode
+  }, busy ? "…" : "Actualiser"), /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: () => setShowProf(!showProf)
+  }, showProf ? "Fermer" : "Profil / programme")), showProf && /*#__PURE__*/React.createElement("div", {
+    className: "mt-3 flex flex-col gap-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 11px ${T.sans}`,
+      color: T.dim,
+      lineHeight: 1.45
+    }
+  }, "Profil actif : ", /*#__PURE__*/React.createElement("b", {
+    style: {
+      color: T.amber
+    }
+  }, profile.name), " — ", Object.keys(profile.program || {}).length, " séances. Un nouveau profil remplace le programme et les blocs repas, jamais les données saisies."), /*#__PURE__*/React.createElement("textarea", {
+    value: profText,
+    onChange: e => setProfText(e.target.value),
+    rows: 4,
+    placeholder: "Colle ici le profil JSON fourni, puis Appliquer.",
+    className: "w-full rounded-lg p-2 outline-none",
+    style: {
+      background: T.panel2,
+      border: `1px solid ${T.line}`,
+      color: T.bone,
+      font: `400 10px ${T.mono}`,
+      resize: "vertical"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 flex-wrap"
+  }, /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "quiet",
+    onClick: () => {
+      const t = JSON.stringify(profile);
+      setProfText(t);
+      try {
+        navigator.clipboard.writeText(t);
+      } catch (e) {}
+    }
+  }, "Exporter le mien"), /*#__PURE__*/React.createElement(Btn, {
+    size: "sm",
+    tone: "solid",
+    onClick: () => {
+      try {
+        const p = JSON.parse(profText);
+        if (!p.program) throw new Error("pas un profil");
+        onProfile(p);
+      } catch (e) {
+        setProfText("⚠ JSON invalide ou profil incomplet");
+      }
+    }
+  }, "Appliquer")))), !settings.duoCode && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.faint,
+      lineHeight: 1.5
+    }
+  }, "Choisis un code commun avec ton partenaire (n'importe quoi, du moment que c'est identique), saisis-le ci-dessus des deux côtés, et vos suivis apparaîtront ici.")), err && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4",
+    style: {
+      borderColor: T.brick + "66"
+    }
+  }, /*#__PURE__*/React.createElement(Eyebrow, {
+    color: T.brick
+  }, "Lecture impossible"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.dim,
+      marginTop: 5
+    }
+  }, err)), rows && rows.length === 0 && settings.duoCode && /*#__PURE__*/React.createElement(Panel, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      font: `400 12px ${T.sans}`,
+      color: T.faint,
+      lineHeight: 1.5
+    }
+  }, "Personne d'autre sur le code « ", settings.duoCode, " ». Vérifie que ton partenaire a saisi exactement le même code et qu'il a ouvert l'app depuis.")), rows && rows.map(r => {
+    const d = r.data || {};
+    const stale = Math.round((Date.now() - (r.at || 0)) / 86400000);
+    const wchart = (d.days || []).filter(x => x.w).map(x => ({
+      d: shortFr(x.d),
+      Poids: x.w
+    }));
+    const kchart = (d.days || []).filter(x => x.k).map(x => ({
+      d: shortFr(x.d),
+      kcal: x.k,
+      Prot: x.p
+    }));
+    return /*#__PURE__*/React.createElement(React.Fragment, {
+      key: r.user_id
+    }, /*#__PURE__*/React.createElement(Panel, {
+      className: "p-4",
+      style: {
+        borderColor: T.peri + "55"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-start justify-between"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Eyebrow, {
+      color: T.peri
+    }, r.pseudo), /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `700 22px ${T.sans}`,
+        color: T.bone,
+        marginTop: 4
+      }
+    }, d.verdict || "—"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `400 10px ${T.mono}`,
+        color: T.faint,
+        marginTop: 2
+      }
+    }, "màj ", stale <= 0 ? "aujourd'hui" : `il y a ${stale} j`)), /*#__PURE__*/React.createElement("div", {
+      className: "text-right"
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `600 20px ${T.mono}`,
+        color: T.amber
+      }
+    }, nf(d.trend, 1)), /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `400 9px ${T.mono}`,
+        color: T.faint
+      }
+    }, "KG TENDANCE"))), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-4 gap-2 mt-3"
+    }, [["%/sem", nf(d.ratePct, 2)], ["série", d.streak ?? "—"], ["séances 7j", d.sessions7 ?? "—"], ["sommeil", d.sleep7 ? fmtH(d.sleep7) : "—"]].map(([l, v]) => /*#__PURE__*/React.createElement("div", {
+      key: l,
+      className: "rounded-lg p-2 text-center",
+      style: {
+        background: T.panel2
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `600 15px ${T.mono}`,
+        color: T.bone
+      }
+    }, v), /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `500 9px ${T.mono}`,
+        color: T.faint,
+        letterSpacing: ".06em",
+        textTransform: "uppercase"
+      }
+    }, l)))), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-4 gap-2 mt-2"
+    }, [["kcal 7j", nf(d.kcal7)], ["prot 7j", nf(d.prot7)], ["pas 7j", nf(d.steps7)], ["TDEE", nf(d.tdee)]].map(([l, v]) => /*#__PURE__*/React.createElement("div", {
+      key: l,
+      className: "rounded-lg p-2 text-center",
+      style: {
+        background: T.panel2
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `600 15px ${T.mono}`,
+        color: T.dim
+      }
+    }, v), /*#__PURE__*/React.createElement("div", {
+      style: {
+        font: `500 9px ${T.mono}`,
+        color: T.faint,
+        letterSpacing: ".06em",
+        textTransform: "uppercase"
+      }
+    }, l))))), wchart.length > 1 && /*#__PURE__*/React.createElement(Panel, {
+      className: "p-4"
+    }, /*#__PURE__*/React.createElement(Eyebrow, null, r.pseudo, " · poids"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        height: 180,
+        marginTop: 10
+      }
+    }, /*#__PURE__*/React.createElement(ResponsiveContainer, null, /*#__PURE__*/React.createElement(LineChart, {
+      data: wchart
+    }, /*#__PURE__*/React.createElement(CartesianGrid, {
+      stroke: T.line,
+      strokeDasharray: "2 4",
+      vertical: false
+    }), /*#__PURE__*/React.createElement(XAxis, {
+      dataKey: "d",
+      ...axis,
+      minTickGap: 26
+    }), /*#__PURE__*/React.createElement(YAxis, {
+      ...axis,
+      width: 40,
+      domain: ["dataMin - 0.5", "dataMax + 0.5"]
+    }), /*#__PURE__*/React.createElement(Tooltip, tip), /*#__PURE__*/React.createElement(Line, {
+      dataKey: "Poids",
+      stroke: T.peri,
+      strokeWidth: 2,
+      dot: {
+        r: 2
+      }
+    }))))), kchart.length > 0 && /*#__PURE__*/React.createElement(Panel, {
+      className: "p-4"
+    }, /*#__PURE__*/React.createElement(Eyebrow, null, r.pseudo, " · apports"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        height: 180,
+        marginTop: 10
+      }
+    }, /*#__PURE__*/React.createElement(ResponsiveContainer, null, /*#__PURE__*/React.createElement(ComposedChart, {
+      data: kchart
+    }, /*#__PURE__*/React.createElement(CartesianGrid, {
+      stroke: T.line,
+      strokeDasharray: "2 4",
+      vertical: false
+    }), /*#__PURE__*/React.createElement(XAxis, {
+      dataKey: "d",
+      ...axis,
+      minTickGap: 20
+    }), /*#__PURE__*/React.createElement(YAxis, {
+      ...axis,
+      width: 40
+    }), /*#__PURE__*/React.createElement(Tooltip, tip), d.targetKcal && /*#__PURE__*/React.createElement(ReferenceLine, {
+      y: d.targetKcal,
+      stroke: T.amber,
+      strokeDasharray: "4 4"
+    }), /*#__PURE__*/React.createElement(Bar, {
+      dataKey: "kcal",
+      fill: T.amber,
+      radius: [3, 3, 0, 0],
+      opacity: 0.65
+    }), /*#__PURE__*/React.createElement(Line, {
+      dataKey: "Prot",
+      stroke: T.peri,
+      strokeWidth: 2,
+      dot: false
+    }))))), d.lifts && Object.keys(d.lifts).length > 0 && /*#__PURE__*/React.createElement(Panel, {
+      className: "p-4"
+    }, /*#__PURE__*/React.createElement(Eyebrow, null, r.pseudo, " · force (e1RM)"), /*#__PURE__*/React.createElement("div", {
+      className: "mt-2"
+    }, Object.entries(d.lifts).map(([n, v]) => /*#__PURE__*/React.createElement("div", {
+      key: n,
+      className: "flex justify-between py-1",
+      style: {
+        borderBottom: `1px solid ${T.line}`
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        font: `400 12px ${T.sans}`,
+        color: T.dim
+      }
+    }, n), /*#__PURE__*/React.createElement("span", {
+      style: {
+        font: `600 13px ${T.mono}`,
+        color: T.amber
+      }
+    }, nf(v), " kg"))))), (d.workouts || []).length > 0 && /*#__PURE__*/React.createElement(Panel, {
+      className: "p-4"
+    }, /*#__PURE__*/React.createElement(Eyebrow, null, r.pseudo, " · séances récentes"), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-1 mt-2"
+    }, d.workouts.map((w, i) => /*#__PURE__*/React.createElement("div", {
+      key: i,
+      className: "flex items-center gap-2 rounded-lg px-3 py-2",
+      style: {
+        background: T.panel2
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        font: `500 12px ${T.sans}`,
+        color: T.bone,
+        flex: 1
+      }
+    }, w.l), /*#__PURE__*/React.createElement("span", {
+      style: {
+        font: `400 10px ${T.mono}`,
+        color: T.faint
+      }
+    }, shortFr(w.d), " · ", w.s, " séries · ", nf(w.t), " kg"))))), (d.measures || []).length > 0 && /*#__PURE__*/React.createElement(Panel, {
+      className: "p-4"
+    }, /*#__PURE__*/React.createElement(Eyebrow, null, r.pseudo, " · mesures"), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-1 mt-2"
+    }, d.measures.map((m, i) => /*#__PURE__*/React.createElement("div", {
+      key: i,
+      className: "flex items-center gap-2 rounded-lg px-3 py-2",
+      style: {
+        background: T.panel2
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        font: `500 12px ${T.mono}`,
+        color: T.bone,
+        flex: 1
+      }
+    }, shortFr(m.date)), /*#__PURE__*/React.createElement("span", {
+      style: {
+        font: `400 11px ${T.mono}`,
+        color: T.faint
+      }
+    }, "bras ", nf(m.brasD, 1), " · taille ", nf(m.taille, 1)))))));
+  }));
+}
+
 /* ============================ APP ============================ */
 function App() {
   const [tab, setTab] = useState("reveil");
@@ -4128,6 +4610,7 @@ function App() {
   const [workouts, setWorkouts] = useState([]);
   const [measures, setMeasures] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [profile, setProfile] = useState(DEFAULT_PROFILE);
   const [store, setStore] = useState({
     probe: null,
     boots: null,
@@ -4142,6 +4625,10 @@ function App() {
     })));
     (async () => {
       const probe = await storageProbe();
+      const prof = await loadKey(K.prof, null);
+      const P = applyProfile(prof || DEFAULT_PROFILE);
+      setProfile(P);
+      if (!prof) schedule(K.prof, P, 0);
       const [d, l, w, m, s, meta] = await Promise.all([loadKey(K.days, {}), loadKey(K.lib, SEED_LIB), loadKey(K.wk, []), loadKey(K.ms, []), loadKey(K.set, DEFAULT_SETTINGS), loadKey(K.meta, {
         boots: 0
       })]);
@@ -4175,6 +4662,18 @@ function App() {
     });
     return () => window.removeEventListener("pagehide", flush);
   }, []);
+  const changeProfile = useCallback(p => {
+    const P = applyProfile(p);
+    setProfile(P);
+    schedule(K.prof, P, 0);
+    // Le profil est autoritaire sur les cibles ; on ne conserve que l'identité et l'état perso
+    setSettings(s => ({
+      ...DEFAULT_SETTINGS,
+      pseudo: s.pseudo,
+      duoCode: s.duoCode,
+      lastDeload: s.lastDeload
+    }));
+  }, []);
   useEffect(() => {
     if (ready) schedule(K.days, days);
   }, [days, ready]);
@@ -4200,6 +4699,62 @@ function App() {
     }));
   }, []);
   const engine = useMemo(() => computeEngine(days, settings), [days, settings]);
+
+  // Résumé publié au partenaire (recalculé et poussé à chaque changement)
+  useEffect(() => {
+    if (!ready || !settings.duoCode || !settings.pseudo) return;
+    const since = addDays(todayKey(), -59);
+    const dd = Object.entries(days).filter(([d]) => d >= since).sort().map(([d, v]) => ({
+      d,
+      w: v.weight || null,
+      k: v.kcal || null,
+      p: v.prot || null,
+      s: v.sleep || null,
+      st: v.steps || null
+    }));
+    let streak = 0;
+    for (let i = 0;; i++) {
+      const v = days[addDays(todayKey(), -i)];
+      if (v && (v.kcal > 0 || v.weight > 0)) streak++;else if (i > 0) break;
+      if (i > 400) break;
+    }
+    const strength = workouts.filter(w => !w.cardio);
+    const lifts = {};
+    [...strength].sort((a, b) => a.date < b.date ? -1 : 1).forEach(w => w.ex.forEach(e => {
+      if (!KEY_LIFTS.includes(e.n)) return;
+      const best = Math.max(0, ...e.sets.filter(s => s.w > 0 && s.r > 0).map(s => e1rm(s.w, s.r)));
+      if (best > 0) lifts[LIFT_SHORT[e.n] || e.n] = Math.round(best);
+    }));
+    const rate = engine.ratePct;
+    const verdict = rate === null ? "Calibrage" : rate > 0.15 ? "Prise de poids" : rate > -0.25 ? "Plateau" : rate >= -0.7 ? "Dans la cible" : "Trop rapide";
+    publishPulse({
+      pseudo: settings.pseudo,
+      duo: settings.duoCode,
+      data: {
+        profil: profile.name,
+        verdict,
+        trend: engine.currentTrend,
+        ratePct: rate,
+        tdee: engine.tdee,
+        targetKcal: engine.targetKcal,
+        kcal7: rolling(days, 7, "kcal"),
+        prot7: rolling(days, 7, "prot"),
+        sleep7: rolling(days, 7, "sleep"),
+        steps7: rolling(days, 7, "steps"),
+        streak,
+        sessions7: strength.filter(w => w.date >= addDays(todayKey(), -6)).length,
+        days: dd,
+        lifts,
+        workouts: [...strength].sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 8).map(w => ({
+          d: w.date,
+          l: w.label,
+          s: sum(w.ex.map(e => e.sets.filter(x => x.r > 0).length)),
+          t: sum(w.ex.map(e => sum(e.sets.map(x => (x.w || 0) * (x.r || 0)))))
+        })),
+        measures: [...measures].sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 3)
+      }
+    });
+  }, [ready, days, workouts, measures, settings.duoCode, settings.pseudo, engine.currentTrend, engine.ratePct]);
   const startDd = daysBetween(engine.settings.startDate || "2026-07-27", todayKey());
   const phaseLabel = startDd < 0 ? `départ lun. 27/07 · J−${-startDd}` : `S${Math.floor(startDd / 7) + 1} · J${startDd + 1}`;
   const TABS = [{
@@ -4222,6 +4777,10 @@ function App() {
     k: "bilan",
     n: "Bilan",
     i: "◉"
+  }, {
+    k: "duo",
+    n: "Duo",
+    i: "◎"
   }];
   if (!ready) return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -4359,6 +4918,15 @@ function App() {
         ...b.settings
       });
     }
+  }), tab === "duo" && /*#__PURE__*/React.createElement(Duo, {
+    settings: engine.settings,
+    setSettings: setSettings,
+    engine: engine,
+    days: days,
+    workouts: workouts,
+    measures: measures,
+    profile: profile,
+    onProfile: changeProfile
   }))), /*#__PURE__*/React.createElement("nav", {
     className: "fixed bottom-0 left-0 right-0",
     style: {
